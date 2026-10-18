@@ -79,11 +79,11 @@ class Test绑定还活着_必须真打接口:
 
 class Test过期文案要给出动作:
     def test_常量本身带原因与动作(self):
-        """掌瓦是单端登录：手机重登会把这里挤掉，只说「重新绑定」等于没说。"""
+        """票据有固定有效期，只说「重新绑定」等于没说。"""
         源码 = (Path(__file__).resolve().parent.parent / "main.py").read_text(encoding="utf-8")
 
         assert "重新发 /爱瓦 绑定" in 源码
-        assert "同一账号只允许一处" in 源码
+        assert "三天" in 源码
 
     def test_战绩文案(self):
         体 = _函数体("_取近期战绩")

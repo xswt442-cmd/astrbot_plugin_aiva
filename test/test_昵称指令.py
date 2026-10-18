@@ -85,11 +85,6 @@ class Test帮助文本提到:
         体 = _函数体("绑定")
         assert "昵称" in 体
 
-    def test_绑定成功时说明单端登录(self):
-        """掌瓦同一账号只允许一处在线，不提前说，用户会在手机上重登后一脸懵。"""
-        体 = _函数体("绑定")
-        assert "只能登一处" in 体
-
 
 if __name__ == "__main__":
     import pytest
