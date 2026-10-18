@@ -78,6 +78,22 @@ def 拼Cookie(凭据: dict[str, Any]) -> str:
     return "; ".join(段)
 
 
+_端游名 = "无畏契约"
+
+
+def _选角色(列表: list[dict[str, Any]]) -> dict[str, Any]:
+    """从角色列表里挑端游角色。
+
+    掌瓦会把同一账号下的「无畏契约」与「无畏契约手游」一起返回，**顺序不固定**。
+    拿手游那个去查战绩，接口回 `result:1003 err_msg='invalid scene game_id'`，
+    看着像登录态失效，其实是查错了角色。没有端游角色就退回第一个。
+    """
+    for 角色 in 列表:
+        if str(角色.get("gameName") or "").strip() == _端游名:
+            return 角色
+    return 列表[0] if 列表 else {}
+
+
 async def 取对局(
     凭据: dict[str, Any], 每页: int = 20
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
@@ -190,10 +206,16 @@ class 掌瓦传输:
         所以不能存起来复用——必须每次现取。封在这里，免得每个调用点各写一遍
         然后漏传 scene（漏了的表现是 `result:1003 wrong scene`，很像登录过期，
         但让用户重扫码也没用）。
+
+        角色顺序不固定，**不能取 `list[0]`**：同一账号下「无畏契约」和
+        「无畏契约手游」两个角色都会返回，拿手游那个去查战绩，接口回
+        `result:1003 err_msg='invalid scene game_id'`——看着像登录失效，
+        其实是查错了角色。
         """
         数据 = await self.取主角色(凭据)
-        列表 = 数据.get("list") or []
-        角色 = 列表[0] if 列表 else {}
+        角色 = _选角色(数据.get("list") or [])
+        if not 角色:
+            raise 业务错误("掌瓦没返回游戏角色，去 App 里确认已绑定，再重发 /爱瓦 绑定")
         return 角色, str(角色.get("scene") or ""), str(角色.get("game_role_id") or "")
 
     async def 取对局列表(
@@ -338,8 +360,8 @@ def _是登录问题(原始: dict[str, Any]) -> bool:
     所以先看消息文本里有没有登录态相关的关键词，再看码。
     """
     消息 = str(原始.get("err_msg") or 原始.get("errMsg") or 原始.get("msg") or "").lower()
-    if any(词 in 消息 for 词 in ("wrong scene", "wrong param", "bad request")):
-        # 参数错，别赖到登录态头上。
+    if any(词 in 消息 for 词 in ("wrong scene", "invalid scene", "wrong param", "bad request")):
+        # 参数/角色错，别赖到登录态头上。
         return False
     码 = 原始.get("result", -1)
     if "ticket" in 消息 or "login" in 消息 or "登录" in 消息:
@@ -361,6 +383,9 @@ def _翻译错误(原始: dict[str, Any]) -> str:
     if "wrong scene" in 消息.lower():
         # 自己少传了 scene/game_role_id，跟用户的登录态无关。
         return "内部取数据缺参数（scene），这是插件的 bug，已记日志"
+    if "invalid scene" in 消息.lower():
+        # scene 与 game_role_id 不配对：通常是挑错了游戏角色（手游 vs 端游）。
+        return "查错了游戏角色，这是插件的 bug，已记日志"
     if 码 == 1018:
         return "查得太快了，稍等一下再试"
     if 码 == 1203:

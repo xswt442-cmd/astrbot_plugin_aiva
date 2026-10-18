@@ -18,7 +18,7 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-from aiva.transport import _是登录问题, _翻译错误
+from aiva.transport import _是登录问题, _翻译错误, _选角色
 
 源码 = Path(__file__).resolve().parent.parent / "aiva" / "transport.py"
 主源码 = Path(__file__).resolve().parent.parent / "main.py"
@@ -79,3 +79,39 @@ class Test1003不是登录过期:
 
     def test_login关键词也算(self):
         assert _是登录问题({"result": -1, "err_msg": "please login again"})
+
+
+class Test挑对游戏角色:
+    """同一账号下「无畏契约」和「无畏契约手游」两个角色都会返回，顺序不固定。
+
+    实测（2026-10-19 00:44）：拿手游角色去查战绩，接口回
+    `result=1003 err_msg='invalid scene game_id'`，被当成登录失效，
+    用户白重绑了三次。端游角色才是要查的那个。
+    """
+
+    端游 = {"gameName": "无畏契约", "game_role_id": "651cca5e", "tier_text": "白银II"}
+    手游 = {"gameName": "无畏契约手游", "game_role_id": "24824969", "tier_text": "青铜II"}
+
+    def test_手游排在前面也选端游(self):
+        assert _选角色([self.手游, self.端游]) is self.端游
+
+    def test_端游排在前面不用挑(self):
+        assert _选角色([self.端游, self.手游]) is self.端游
+
+    def test_没有端游角色就退回第一个(self):
+        assert _选角色([self.手游]) is self.手游
+
+    def test_空列表返回空(self):
+        assert _选角色([]) == {}
+
+    def test_取角色上下文不取死第一个(self):
+        源 = 源码.read_text(encoding="utf-8")
+        体 = 源[源.index("async def 取角色上下文") :]
+        体 = 体[: 体.index("async def 取对局列表")]
+        assert "_选角色(" in 体, "取 list[0] 会随机撞上手游角色"
+
+    def test_invalid_scene不算登录过期(self):
+        """查错了角色（手游 vs 端游）也会回 1003，这个不能让用户重扫码。"""
+        原始 = {"result": 1003, "err_msg": "invalid scene game_id"}
+        assert not _是登录问题(原始)
+        assert "角色" in _翻译错误(原始)
