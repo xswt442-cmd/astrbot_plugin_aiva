@@ -101,17 +101,12 @@ def test_图标尺寸与色彩模式():
     assert 色彩类型 == 2, f"logo.png 的色彩类型是 {色彩类型}，应为 2（RGB 无 alpha）"
 
 
-def test_源图在仓库里且够大():
-    """`icon/` 存着源图。
+def test_仓库里不放图标源图():
+    """`logo.png` 是仓库里唯一要发的图，源图不进版本库。
 
-    改图标时改源图再跑 `test/做图标.py`，不手改 logo.png——手改的那份下次
-    重新生成就被覆盖了。注意这张图**不做亮度抠底**（图案暗部与背景亮度
-    重叠，按亮度抠会把人抠没），自检逻辑在 `做图标.py` 的 `自检` 里。
+    AstrBot 只认根目录的 `logo.png`（`star_manager` 里的 `logo_fname`），
+    换图标直接替换这个文件；`test/做图标.py` 留着生成用，需要时把源图
+    放回 `icon/` 再跑。
     """
-    源 = 仓库根 / "icon" / "aiva-icon.png"
-    assert 源.exists(), "缺 icon/aiva-icon.png，重新生成 logo.png 需要它"
-
-    头 = 源.read_bytes()[:24]
-    宽 = int.from_bytes(头[16:20], "big")
-    高 = int.from_bytes(头[20:24], "big")
-    assert min(宽, 高) >= 256, f"源图 {宽}×{高}，比 256 还小的话放大后会糊"
+    assert (仓库根 / "logo.png").exists()
+    assert not (仓库根 / "icon").exists(), "源图目录不该再进仓库"

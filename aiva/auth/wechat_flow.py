@@ -14,6 +14,8 @@ from typing import Any
 import aiohttp
 
 from .wechat import (
+    WECHAT_APPID,
+    WECHAT_MCODE,
     WECHAT_POLL_URL,
     WECHAT_QR_URL,
     build_poll_query,
@@ -27,6 +29,7 @@ __all__ = ["微信出码会话"]
 SDK票据接口 = "https://app.mval.qq.com/go/auth/get_sdk_ticket"
 
 _请求头 = {"Content-Type": "application/json", "User-Agent": "okhttp/4.9.3"}
+_设备名 = "22041216C"
 _轮询间隔秒 = 2
 _单次请求秒 = 35
 # 轮询是长连接，服务端会挂住一段时间再回；给它单独的短超时，别把整轮预算吃掉。
@@ -51,9 +54,22 @@ class 微信出码会话:
         return 结果["二维码"]
 
     async def _取票据(self) -> str:
-        """向掌瓦要一张微信 SDK 票据。不需要任何参数，也不需要登录态。"""
+        """向掌瓦要一张微信 SDK 票据。不需要登录态。
+
+        请求体里的 `sdk_appid` 与 `mcode` 都是微信渠道那套：mcode 换成 QQ 的
+        会走到另一条分支（换票回 10202）。
+        """
         assert self._http is not None
-        async with self._http.post(SDK票据接口, headers=_请求头, json={}) as 响应:
+        体 = {
+            "clienttype": 9,
+            "config_params": {"client_dev_name": _设备名, "lang_type": 0},
+            "mappid": 10200,
+            "mcode": WECHAT_MCODE,
+            "sdk_appid": WECHAT_APPID,
+            "source_game_zone": "agame",
+            "game_zone": "agame",
+        }
+        async with self._http.post(SDK票据接口, headers=_请求头, json=体) as 响应:
             载荷 = json.loads(await 响应.text())
 
         if 载荷.get("result") != 0:

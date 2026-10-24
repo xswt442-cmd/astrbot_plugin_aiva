@@ -19,6 +19,7 @@ from typing import Any
 
 __all__ = [
     "WECHAT_APPID",
+    "WECHAT_MCODE",
     "WECHAT_POLL_URL",
     "WECHAT_QR_URL",
     "build_poll_query",
@@ -33,6 +34,10 @@ __all__ = [
 
 # 掌上无畏契约的微信 AppID。公开客户端里的值，不是 AppSecret。
 WECHAT_APPID = "wxcbb49f1f39656c2a"
+
+# 微信渠道的 mcode。和 QQ 扫码那条（`132f0a77…`）不是一个值：拿 QQ 的来用，
+# 后端会走错分支，换票回 10202。
+WECHAT_MCODE = "69028af6dca2c107f4f58290100011b1a303"
 
 WECHAT_QR_URL = "https://open.weixin.qq.com/connect/sdk/qrconnect"
 WECHAT_POLL_URL = "https://long.open.weixin.qq.com/connect/l/qrconnect"

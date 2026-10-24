@@ -119,3 +119,36 @@ class Test图片类型:
 
     def test_未知前缀退回_jpeg(self):
         assert 检测图片类型("unknown") == "image/jpeg"
+
+
+class Test换票请求体:
+    """少传字段的代价：后端回 2025 + 内层 10002，看起来像「码无效」。
+
+    2026-10-25 实测走了两轮弯路：只传 `login_info.code` 时，扫码成功后换票
+    必然失败。补齐 `appid` / `check_third_type` / `wx_info_type` 与微信渠道的
+    mcode 才对。
+    """
+
+    def test_四个字段都在(self):
+        from aiva.transport import 微信换票体
+
+        信息 = 微信换票体("CODE")["login_info"]
+        assert 信息["code"] == "CODE"
+        assert 信息["appid"] == "wxcbb49f1f39656c2a"
+        assert 信息["check_third_type"] == 1
+        assert 信息["wx_info_type"] == 1
+
+    def test_用微信渠道的_mcode(self):
+        from aiva.transport import 微信换票体
+
+        体 = 微信换票体("CODE")
+        assert 体["mcode"] == "69028af6dca2c107f4f58290100011b1a303"
+        assert 体["mcode"] != "132f0a77d34402abc8463d60100011d19b0e", "那是 QQ 渠道的"
+
+    def test_带渠道与区服(self):
+        from aiva.transport import 微信换票体
+
+        体 = 微信换票体("CODE")
+        assert 体["source_game_zone"] == "agame"
+        assert 体["game_zone"] == "agame"
+        assert 体["mappid"] == 10200

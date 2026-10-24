@@ -5,6 +5,21 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.3.3] - 2026-10-25
+
+### 修正
+
+- **微信换票补齐请求字段。** `login_info` 里除了 `code` 还必须带 `appid`、
+  `check_third_type`、`wx_info_type`，外层要用**微信渠道**的 `mcode`
+  （`69028af6…`，跟 QQ 的 `132f0a77…` 不是一个值）。此前只传 `code`，
+  扫码授权成功后换票必然失败，回 `result=2025` + 内层 `code:10002`，
+  看着像「授权码无效」，实际是少传了参数。
+
+### 变更
+
+- 图标源图移出仓库，`test_metadata` 改为断言根目录只有 `logo.png`；
+  `docs/RELEASING.md` 里的更换流程同步。
+
 ## [0.3.2] - 2026-10-25
 
 ### 变更

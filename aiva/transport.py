@@ -22,12 +22,15 @@ from typing import Any
 
 import aiohttp
 
+from .auth.wechat import WECHAT_APPID, WECHAT_MCODE
+
 __all__ = [
     "掌瓦传输",
     "业务错误",
     "登录过期",
     "取对局",
     "取段位",
+    "微信换票体",
 ]
 
 _接口根 = "https://app.mval.qq.com"
@@ -43,6 +46,7 @@ _对局详情 = "/go/agame/career/record/scoreboard"
 _APPID = 102061775
 _MAPPID = 10200
 _MCODE = "132f0a77d34402abc8463d60100011d19b0e"
+_设备名 = "22041216C"
 
 _UA = (
     "mval/2.4.0.10053 Channel/10068 Manufacturer/Xiaomi "
@@ -58,6 +62,30 @@ class 业务错误(Exception):
 
 class 登录过期(业务错误):
     """登录态失效，需要重新扫码。"""
+
+
+def 微信换票体(code: str) -> dict[str, Any]:
+    """微信换票的请求体。
+
+    `login_info` 里四个字段一个都不能省：`appid` 告诉后端用哪个微信应用去换
+    openid，`check_third_type` / `wx_info_type` 决定走第三方登录分支，
+    外面还要用**微信渠道**的 mcode（和 QQ 那条不是一个值）。
+    缺任何一个，后端都会回 `result=2025` + 内层 `code:10002`。
+    """
+    return {
+        "clienttype": 9,
+        "config_params": {"client_dev_name": _设备名, "lang_type": 0},
+        "login_info": {
+            "appid": WECHAT_APPID,
+            "check_third_type": 1,
+            "code": code,
+            "wx_info_type": 1,
+        },
+        "mappid": _MAPPID,
+        "mcode": WECHAT_MCODE,
+        "source_game_zone": "agame",
+        "game_zone": "agame",
+    }
 
 
 def 拼Cookie(凭据: dict[str, Any]) -> str:
@@ -193,17 +221,19 @@ class 掌瓦传输:
     async def 换票微信(self, code: str) -> dict[str, Any]:
         """用微信授权码换掌瓦的 userId / tid。
 
-        微信这条路只认 `login_info.code`：掌瓦服务端拿它去微信换 openid，
-        我们这边拿不到也不需要 AppSecret。带上 QQ 那套 `clienttype`/`mcode`
-        反而会被后端走到另一条分支（错误码从 10002 变成 10202）。
+        请求体不能省字段：`login_info` 里除了 `code` 还要 `appid`、
+        `check_third_type`、`wx_info_type`，外面要用微信通道的 `mcode`。
+        少任何一个，后端拿去微信换 openid 都会失败，回 `result=2025` +
+        内层 `code:10002`——看着像「码无效」，其实是我们少传了参数。
         """
-        体 = {"login_info": {"code": code}}
         头 = {
             "Cookie": "clientType=9; openid=null; access_token=null;",
             "User-Agent": _UA,
             "Content-Type": "application/json",
         }
-        原始 = await self._请求("POST", _登录换票微信, headers=头, json体=体, 校验=False)
+        原始 = await self._请求(
+            "POST", _登录换票微信, headers=头, json体=微信换票体(code), 校验=False
+        )
         数据 = 原始.get("data") or {}
         登录 = 数据.get("login_info") or {}
         return {

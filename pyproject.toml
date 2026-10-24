@@ -1,6 +1,6 @@
 [project]
 name = "astrbot-plugin-aiva"
-version = "0.3.2"
+version = "0.3.3"
 description = "查无畏契约国服战绩，让模型替你锐评。"
 requires-python = ">=3.10"
 dependencies = [
