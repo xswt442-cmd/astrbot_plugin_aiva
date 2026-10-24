@@ -147,6 +147,6 @@ class Test错误原文要留证据:
         """换票这一步还没有登录态，任何失败都是业务错误。"""
         源 = 源码.read_text(encoding="utf-8")
         段 = 源[源.index("if not 校验:") :]
-        段 = 段[: 段.index("if 原始.get(\"result\") != 0:", 40)]
+        段 = 段[: 段.index('if 原始.get("result") != 0:', 40)]
         assert "业务错误" in 段
         assert "登录过期" not in 段
