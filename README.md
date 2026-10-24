@@ -141,8 +141,7 @@ uv run ruff format --check .
 改协议相关代码前先跑一次 `uv run python test/verify_mval.py` 探接口还活着没有。
 
 协作约定见 [AGENTS.md](AGENTS.md)，更新日志见 [docs/CHANGELOG.md](docs/CHANGELOG.md)，
-术语定义见 [docs/GLOSSARY.md](docs/GLOSSARY.md)，发版流程见
-[docs/RELEASING.md](docs/RELEASING.md)。
+发版流程见 [docs/RELEASING.md](docs/RELEASING.md)。
 
 ## License
 

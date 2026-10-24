@@ -9,7 +9,6 @@
 | 用途、配置、指令 | `README.md` |
 | 版本变化 | `docs/CHANGELOG.md` |
 | 发版操作 | `docs/RELEASING.md` |
-| 术语 | `docs/GLOSSARY.md` |
 | 工程约束与实测结论 | `AGENTS.md` |
 | 文档规范 | 本文件 |
 
