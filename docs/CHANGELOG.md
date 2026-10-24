@@ -5,6 +5,12 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.3.4] - 2026-10-25
+
+### 变更
+
+- 仓库文档精简：AGENTS.md 压缩，新增文档规范 `.github/engineering/STANDARD.md`，移除术语表
+
 ## [0.3.3] - 2026-10-25
 
 ### 修正
