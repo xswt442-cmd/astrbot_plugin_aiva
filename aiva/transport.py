@@ -34,6 +34,7 @@ _通用查询 = "source_game_zone=agame&game_zone=agame"
 
 # 换了凭证（openid+token）后的三大入口。返回 999999 就是「活着但要登录」。
 _登录换票 = "/go/auth/login_by_qq"
+_登录换票微信 = "/go/auth/login_by_wechat"
 _主角色 = "/go/account/get_main_role_raw"
 _对局列表 = "/go/agame/career/record/list"
 _对局详情 = "/go/agame/career/record/scoreboard"
@@ -68,7 +69,7 @@ def 拼Cookie(凭据: dict[str, Any]) -> str:
         "clientType=9",
         f"uin=o{凭据.get('uin', 0)}",
         f"appid={_APPID}",
-        "acctype=qc",
+        f"acctype={凭据.get('acctype') or 'qc'}",
         f"openid={凭据.get('openid', '')}",
         f"access_token={凭据.get('access_token', '') or 'null'}",
         f"userId={凭据.get('userId', '')}",
@@ -185,6 +186,32 @@ class 掌瓦传输:
             "userId": str(登录.get("user_id", "")),
             "tid": str(登录.get("wt", "")),
             "uin": int(登录.get("uin") or 0),
+            "acctype": "qc",
+        }
+
+    async def 换票微信(self, code: str) -> dict[str, Any]:
+        """用微信授权码换掌瓦的 userId / tid。
+
+        微信这条路只认 `login_info.code`：掌瓦服务端拿它去微信换 openid，
+        我们这边拿不到也不需要 AppSecret。带上 QQ 那套 `clienttype`/`mcode`
+        反而会被后端走到另一条分支（错误码从 10002 变成 10202）。
+        """
+        体 = {"login_info": {"code": code}}
+        头 = {
+            "Cookie": "clientType=9; openid=null; access_token=null;",
+            "User-Agent": _UA,
+            "Content-Type": "application/json",
+        }
+        原始 = await self._请求("POST", _登录换票微信, headers=头, json体=体, 校验=False)
+        数据 = 原始.get("data") or {}
+        登录 = 数据.get("login_info") or {}
+        return {
+            "openid": str(登录.get("openid") or 数据.get("openid") or ""),
+            "access_token": str(登录.get("access_token") or 数据.get("access_token") or ""),
+            "userId": str(登录.get("user_id", "")),
+            "tid": str(登录.get("wt", "")),
+            "uin": int(登录.get("uin") or 0),
+            "acctype": "wx",
         }
 
     async def 取主角色(self, 凭据: dict[str, Any]) -> dict[str, Any]:

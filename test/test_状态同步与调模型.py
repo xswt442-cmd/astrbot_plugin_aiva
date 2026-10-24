@@ -124,8 +124,13 @@ class Test调模型:
 
 class Test绑定时间戳:
     def test_绑定时要盖时间戳(self):
-        体 = _函数体内("绑定")
+        """两条绑定路径都走 `_落库并回话`，时间戳盖在那里。"""
+        体 = _函数体内("_落库并回话")
         assert "记绑定时间(" in 体
+
+    def test_两条绑定路径都落库(self):
+        源码 = (Path(__file__).resolve().parent.parent / "main.py").read_text(encoding="utf-8")
+        assert 源码.count("_落库并回话(") >= 3, "绑定与绑定微信都要落库"
 
     def test_旧数据没有时间戳也要能读(self):
         from aiva.storage import 已绑多久, 记绑定时间

@@ -28,6 +28,7 @@ from astrbot.core.star.filter.custom_filter import CustomFilter
 # 全部在模块顶层导入。插件加载时就把整个包摸清：少文件、依赖缺失都在启动
 # 阶段报错，而不是等用户发了指令才在懒加载里抛模块不存在。
 from .aiva.auth.ptlogin import 扫码会话, 脱敏
+from .aiva.auth.wechat_flow import 微信出码会话
 from .aiva.match import 开局设定, 设定文本
 from .aiva.pk import 从原始载荷认对手, 从提及里找对手, 找对手, 提及摘要
 from .aiva.prompts import PK提示, 开局提示, 锐评提示
@@ -152,6 +153,8 @@ _模型系统提示 = (
 _帮助文本 = """爱瓦 · 无畏契约国服战绩
 /爱瓦 绑定
 QQ 扫码绑定你的无畏契约账号。
+/爱瓦 绑定微信
+微信扫码绑定，账号在微信区时用这个。
 /爱瓦 战绩
 查询近期战绩。
 /爱瓦 锐评
@@ -377,16 +380,89 @@ class Main(Star):
 
             # 昵称是 PK 认人的唯一兜底（QQ 官方收不到 @别人），
             # 每次绑定都刷新一次——用户改了群昵称也能跟上。
-            self._凭据.写入(
-                用户,
-                记昵称(记绑定时间(凭据), self._名字(event)),
-            )
             logger.info(f"[aiva] 用户 {用户} 绑定成功")
-            名字 = str(凭据.get("昵称") or "").strip()
-            yield event.plain_result(
-                f"绑定成功（{凭据摘要(凭据)}）。\n"
-                f"PK 名字是「{名字 or '（没取到）'}」，要改发 /爱瓦 昵称。"
+            yield event.plain_result(self._落库并回话(event, 用户, 凭据))
+        finally:
+            await 会话.关闭()
+
+    @爱瓦.command("绑定微信")
+    async def 绑定微信(self, event: AstrMessageEvent):
+        """微信扫码绑定掌上无畏契约账号。
+
+        掌瓦的微信登录是「先拿 SDK 票据，再用微信官方接口换二维码，轮询拿
+        授权码，最后用授权码换票」——全程 HTTP，不需要浏览器侧车。
+        """
+        用户 = event.get_sender_id()
+        if not 用户:
+            yield event.plain_result("拿不到你的用户标识，无法绑定。")
+            return
+
+        已有 = self._凭据.读取(用户)
+        if 已有 and 凭据是否齐全(已有):
+            还活着 = await self._绑定还活着(用户, 已有)
+            if 还活着:
+                yield event.plain_result(
+                    f"已经绑定了账号（{凭据摘要(已有)}），换号先发 /爱瓦 解绑。"
+                )
+                return
+            logger.info(f"[aiva] 用户 {用户} 已有绑定但已失效，允许直接覆盖重绑")
+            yield event.plain_result(f"之前的绑定失效了（{凭据摘要(已有)}），重新扫码就行。")
+
+        会话 = 微信出码会话()
+        try:
+            try:
+                二维码 = await 会话.出码()
+            except RuntimeError as exc:
+                logger.warning(f"[aiva] 微信出码失败：{exc}")
+                yield event.plain_result(f"生成微信二维码失败（{exc}），稍后再试。")
+                return
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(f"[aiva] 微信出码异常：{type(exc).__name__}: {exc}")
+                yield event.plain_result("生成微信二维码时网络出错，稍后再试。")
+                return
+
+            from astrbot.core.message.components import Image, Plain
+
+            yield event.chain_result(
+                [
+                    Image.fromBytes(二维码),
+                    Plain("用微信扫码，50 秒内有效。"),
+                ]
             )
+
+            try:
+                授权码 = await 会话.等授权码(_轮询预算)
+            except TimeoutError:
+                logger.info("[aiva] 微信扫码超时")
+                yield event.plain_result("扫码超时，重新发 /爱瓦 绑定微信。")
+                return
+            except RuntimeError as exc:
+                logger.info(f"[aiva] 微信扫码结束：{exc}")
+                yield event.plain_result(f"扫码失败：{exc}，重新发 /爱瓦 绑定微信。")
+                return
+            except asyncio.TimeoutError:
+                yield event.plain_result("扫码超时，重新发 /爱瓦 绑定微信。")
+                return
+
+            传输 = 掌瓦传输(self._请求超时)
+            try:
+                凭据 = await 传输.换票微信(授权码)
+            except 业务错误 as exc:
+                logger.warning(f"[aiva] 微信换票失败：{exc}")
+                yield event.plain_result(f"微信登录成功，换取凭证失败：{exc}")
+                return
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(f"[aiva] 微信换票异常：{type(exc).__name__}: {exc}")
+                yield event.plain_result("换取凭证时网络出错，请重试。")
+                return
+
+            if not 凭据是否齐全(凭据):
+                logger.warning(f"[aiva] 微信换票返回的凭据不完整：{sorted(凭据)}")
+                yield event.plain_result("拿不到完整凭证，请重试。")
+                return
+
+            logger.info(f"[aiva] 用户 {用户} 微信绑定成功")
+            yield event.plain_result(self._落库并回话(event, 用户, 凭据))
         finally:
             await 会话.关闭()
 
@@ -727,6 +803,19 @@ class Main(Star):
         """
         # 老记录可能是净化之前存进去的，念之前再洗一次。
         return 净化昵称(凭据.get("昵称") or "") or 净化昵称(平台显示名) or 兜底
+
+    def _落库并回话(self, event: AstrMessageEvent, 用户: str, 凭据: dict[str, Any]) -> str:
+        """存下凭据，返回给用户看的那句话。QQ 与微信两条绑定路径共用。
+
+        昵称是 PK 认人的唯一兜底（QQ 官方收不到 @别人），每次绑定都刷新一次，
+        用户改了群昵称也能跟上。
+        """
+        self._凭据.写入(用户, 记昵称(记绑定时间(凭据), self._名字(event)))
+        名字 = str(凭据.get("昵称") or "").strip()
+        return (
+            f"绑定成功（{凭据摘要(凭据)}）。\n"
+            f"PK 名字是「{名字 or '（没取到）'}」，要改发 /爱瓦 昵称。"
+        )
 
     async def _绑定还活着(self, 用户: str, 凭据: dict[str, Any]) -> bool:
         """这份绑定的登录态还能不能取到战绩。
