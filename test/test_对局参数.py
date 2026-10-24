@@ -115,3 +115,38 @@ class Test挑对游戏角色:
         原始 = {"result": 1003, "err_msg": "invalid scene game_id"}
         assert not _是登录问题(原始)
         assert "角色" in _翻译错误(原始)
+
+
+class Test错误原文要留证据:
+    """2025 这种没见过的错误码，只记 result= 等于什么都没记。
+
+    2026-10-25 实测：微信换票回 `result=2025`，日志里只有这个数字，
+    腾讯原话（`MlolLoginByWechat fail ret=2025`）没留下来，只能让用户再扫一次。
+    """
+
+    def test_短错误带原话(self):
+        from aiva.transport import _短错误
+
+        文本 = _短错误({"result": 2025, "err_msg": "MlolLoginByWechat fail ret=2025"})
+        assert "MlolLoginByWechat" in 文本
+
+    def test_长串被抹掉(self):
+        from aiva.transport import _短错误
+
+        候选 = "auth fail ticket=abcdefghijklmnopqrstuvwxyz0123456789ABCDEFG"
+        assert "abcdefghijklmnopqrstuvwxyz" not in _短错误({"result": 1, "err_msg": 候选})
+        assert "<长串>" in _短错误({"result": 1, "err_msg": 候选})
+
+    def test_原文摘要带码与消息(self):
+        from aiva.transport import _原文摘要
+
+        摘要 = _原文摘要({"result": 2025, "err_msg": "MlolLoginByWechat fail ret=2025"})
+        assert "2025" in 摘要 and "MlolLoginByWechat" in 摘要
+
+    def test_换票失败不算登录过期(self):
+        """换票这一步还没有登录态，任何失败都是业务错误。"""
+        源 = 源码.read_text(encoding="utf-8")
+        段 = 源[源.index("if not 校验:") :]
+        段 = 段[: 段.index("if 原始.get(\"result\") != 0:", 40)]
+        assert "业务错误" in 段
+        assert "登录过期" not in 段

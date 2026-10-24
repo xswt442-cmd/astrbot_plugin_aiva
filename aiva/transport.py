@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import json
+import re
 import time
 from collections.abc import Callable
 from typing import Any
@@ -335,11 +336,16 @@ class 掌瓦传输:
                 原始 = json.loads(文本) if 文本.strip().startswith("{") else {}
             except json.JSONDecodeError:
                 raise 业务错误(f"接口没返回 JSON（HTTP {响应.status}）") from None
-        _记(f"← {路径} HTTP {响应.status} result={原始.get('result')!r}")
+        _记(
+            f"← {路径} HTTP {响应.status} result={原始.get('result')!r}"
+            + ("" if 原始.get("result") == 0 else f" {_短错误(原始)}")
+        )
 
         if not 校验:
             if 原始.get("result") != 0:
-                raise 业务错误(_翻译错误(原始))
+                # 这一步还没有登录态可言（换票就是来拿登录态的），
+                # 所以任何失败都算业务错误，别翻译成「重新扫码」。
+                raise 业务错误(f"{_翻译错误(原始)}（{_原文摘要(原始)}）")
             return 原始
         if 原始.get("result") != 0:
             # 登录态过期跟其他错误不是一个性质：前者要用户重新扫码，
@@ -349,10 +355,7 @@ class 掌瓦传输:
             # 但我们完全不知道腾讯到底说了什么，这种黑箱已经浪费过一整天。
             # 消息文本里带上 result 与 err_msg，排查时直接能对上。
             译文 = _翻译错误(原始)
-            原文 = (
-                f"result={原始.get('result')!r} "
-                f"err_msg={原始.get('err_msg') or 原始.get('errMsg') or 原始.get('msg')!r}"
-            )
+            原文 = _原文摘要(原始)
             if _是登录问题(原始):
                 raise 登录过期(f"{译文}（{原文}）") from None
             raise 业务错误(f"{译文}（{原文}）") from None
@@ -396,6 +399,30 @@ def _是登录问题(原始: dict[str, Any]) -> bool:
     # 999999 配 DecodeTgpTicket 才是腾讯的登录态问题；
     # 1001/1003 没有明确消息时按可疑处理。
     return 码 in (1001, 1003, 999999)
+
+
+def _服务端原话(原始: dict[str, Any]) -> str:
+    return str(原始.get("err_msg") or 原始.get("errMsg") or 原始.get("msg") or "")
+
+
+def _抹长串(文本: str) -> str:
+    """把票据/令牌这类长串抹掉。日志是 INFO，会被贴进 issue。"""
+    return re.sub(r"[A-Za-z0-9_\-]{40,}", "<长串>", 文本)
+
+
+def _短错误(原始: dict[str, Any]) -> str:
+    """失败时的日志尾巴：带上腾讯的原话。
+
+    **必须带**：1003 有好几种含义，2025 这种没见过的码更是只能看原话。
+    只记 `result=` 的话，每次都得拿真凭据重放一遍才能判断——已经被这个
+    盲区绕过两回。
+    """
+    return f"err={_抹长串(_服务端原话(原始))[:160]!r}"
+
+
+def _原文摘要(原始: dict[str, Any]) -> str:
+    """跟在错误文案后面给用户看的那一截。"""
+    return f"result={原始.get('result')!r} err_msg={_抹长串(_服务端原话(原始))[:160]!r}"
 
 
 def _翻译错误(原始: dict[str, Any]) -> str:
