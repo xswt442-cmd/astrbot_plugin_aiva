@@ -2,7 +2,7 @@ name: astrbot_plugin_aiva
 display_name: 爱瓦
 short_desc: 查无畏契约国服战绩，让模型替你锐评。
 desc: 扫码绑定掌上无畏契约账号后，读取玩家自己的段位与战绩数据，交给大模型做锐评和玩家画像。
-version: v0.2.9
+version: v0.3.0
 author: xswt442-cmd
 repo: https://github.com/xswt442-cmd/astrbot_plugin_aiva
 astrbot_version: ">=4.16,<5"

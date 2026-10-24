@@ -22,7 +22,9 @@ AstrBot 插件。扫码绑定自己的掌上无畏契约账号后，问它就能
 国服**没有**官方公开 API：Riot 官方 API 只覆盖国际服、`api.riotgames.cn`、
 `pd.cn.a.pvp.net` 实测 DNS 无记录。所以这条路：
 
-- 必须扫码登录一次（QQ OAuth + 掌瓦换票）；
+- 必须扫码登录一次（QQ 或微信，掌瓦换票）；
+  QQ 扫码走客户端那套跳转，微信走「掌瓦发票据 → 微信换二维码 → 轮询取授权码」，
+  两条路都是纯 HTTP。
 - `mcode` 是硬编码的渠道串，腾讯轮换即失效；
 - 私享战绩开着的号查不到，这个对所有第三方工具都一样。
 
@@ -39,6 +41,8 @@ AstrBot 插件。扫码绑定自己的掌上无畏契约账号后，问它就能
 | `https://openmobile.qq.com` | 同上（Referer） |
 | `https://connect.qq.com` | 登录回跳地址 |
 | `https://imgcache.qq.com` | 二维码图片 |
+| `https://open.weixin.qq.com` | 微信扫码：用掌瓦的 SDK 票据换二维码 |
+| `https://long.open.weixin.qq.com` | 微信扫码：长轮询等授权码 |
 
 登录跳转只跟 `*.qq.com`；跳到别的域会直接断链，会话里的 cookie 不外流
 （见 `aiva/auth/ptlogin.py` 的 `_可以跟跳`）。

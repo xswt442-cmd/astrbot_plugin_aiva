@@ -5,6 +5,25 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.3.0] - 2026-10-25
+
+### 新增
+
+- **`/爱瓦 绑定微信`。** 账号在微信区的用户以前根本用不了这个插件——掌瓦的
+  QQ 扫码登录看不到微信区的角色。现在多了一条微信扫码路径，全程 HTTP，
+  不需要浏览器侧车：
+  1. `POST /go/auth/get_sdk_ticket` 拿 SDK 票据（不需要任何参数，也不需要登录态）；
+  2. 微信 `connect/sdk/qrconnect` 用票据换二维码（appid `wxcbb49f1f39656c2a`）；
+  3. 长轮询 `connect/l/qrconnect` 取授权码；
+  4. `POST /go/auth/login_by_wechat` 用授权码换 `userId` / `tid`。
+- 两条绑定路径共用落库与文案；`/爱瓦 绑定` 仍然是 QQ 扫码。
+
+### 变更
+
+- 凭据必备字段从 `openid + access_token + userId + tid` 收紧到 `userId + tid`：
+  微信登录的返回里不一定带前两项。
+- Cookie 里的 `acctype` 按凭据走（`qc` / `wx`），不再写死。
+
 ## [0.2.9] - 2026-10-19
 
 ### 修正
