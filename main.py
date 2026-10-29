@@ -54,7 +54,7 @@ from .aiva.transport import (
     掌瓦传输,
     登录过期,
 )
-from .aiva.兜底 import 以组名开头, 取落空参数, 是否落空, 落空提示
+from .aiva.兜底 import 以组名开头, 取落空参数, 是否空指令, 是否落空, 落空提示
 
 _组名 = "爱瓦"
 
@@ -216,6 +216,12 @@ class _落空兜底(CustomFilter):
         if not 以组名开头(文本, _组名):
             return True
         logger.debug(f"[aiva] 指令命中 message_str={文本!r}")
+        if 是否空指令(文本, _组名):
+            # 只发了「/爱瓦」：回帮助。交给框架会甩一串「参数不足」加各指令的
+            # docstring，用户看到的是内部说明，不是能发什么。
+            event.set_result(MessageEventResult().message(_帮助文本))
+            event.stop_event()
+            return True
         if 是否落空(文本, _组名):
             event.set_result(MessageEventResult().message(落空提示(取落空参数(文本, _组名))))
             event.stop_event()

@@ -375,3 +375,33 @@ class Test审核合规:
         assert "check_hostname = False" not in 传输
         assert "verify_mode" not in 传输
         assert "ssl=" not in 传输
+
+
+class Test空指令给帮助:
+    """只发 `/爱瓦` 时回帮助，别甩框架的「参数不足」。
+
+    2026-10-29 实测：`/爱瓦 @某人` 落到框架那层，回的是「参数不足」加全部
+    子命令和各自的 docstring——一大段内部说明，用户还是不知道能发什么。
+    """
+
+    @pytest.mark.parametrize("消息", ["/爱瓦", "爱瓦", "/爱瓦   ", "爱瓦 "])
+    def test_只发组名算空指令(self, 消息: str):
+        from aiva.兜底 import 是否空指令
+
+        assert 是否空指令(消息, "爱瓦")
+
+    @pytest.mark.parametrize(
+        "消息",
+        ["/爱瓦 战绩", "爱瓦战绩", "/爱农 状态", "今天天气不错", ""],
+    )
+    def test_带参数或别人的消息不算(self, 消息: str):
+        from aiva.兜底 import 是否空指令
+
+        assert not 是否空指令(消息, "爱瓦")
+
+    def test_过滤器回帮助而不是落空提示(self):
+        源 = (Path(__file__).resolve().parent.parent / "main.py").read_text(encoding="utf-8")
+        体 = 源[源.index("class _落空兜底") :]
+        体 = 体[: 体.index("class Main(")]
+        assert "是否空指令(" in 体
+        assert "_帮助文本" in 体, "空指令要回帮助，不能只说「不是子命令」"
