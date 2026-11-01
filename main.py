@@ -28,7 +28,7 @@ from astrbot.core.star.filter.custom_filter import CustomFilter
 # 全部在模块顶层导入。插件加载时就把整个包摸清：少文件、依赖缺失都在启动
 # 阶段报错，而不是等用户发了指令才在懒加载里抛模块不存在。
 from .aiva.auth.ptlogin import 扫码会话, 脱敏
-from .aiva.auth.wechat_flow import 微信出码会话
+from .aiva.auth.wechat_flow import WechatQrSession
 from .aiva.fallback import (
     is_bare_command,
     is_command_miss,
@@ -420,10 +420,10 @@ class Main(Star):
             logger.info(f"[aiva] 用户 {用户} 已有绑定但已失效，允许直接覆盖重绑")
             yield event.plain_result(f"之前的绑定失效了（{masked_id(已有)}），重新扫码就行。")
 
-        会话 = 微信出码会话()
+        会话 = WechatQrSession()
         try:
             try:
-                二维码 = await 会话.出码()
+                二维码 = await 会话.create_qr()
             except RuntimeError as exc:
                 logger.warning(f"[aiva] 微信出码失败：{exc}")
                 yield event.plain_result(f"生成微信二维码失败（{exc}），稍后再试。")
@@ -443,7 +443,7 @@ class Main(Star):
             )
 
             try:
-                授权码 = await 会话.等授权码(_轮询预算)
+                授权码 = await 会话.wait_for_code(_轮询预算)
             except TimeoutError:
                 logger.info("[aiva] 微信扫码超时")
                 yield event.plain_result("扫码超时，重新发 /爱瓦 绑定微信。")
@@ -476,7 +476,7 @@ class Main(Star):
             logger.info(f"[aiva] 用户 {用户} 微信绑定成功")
             yield event.plain_result(self._落库并回话(event, 用户, 凭据))
         finally:
-            await 会话.关闭()
+            await 会话.close()
 
     @爱瓦.command("解绑")
     async def 解绑(self, event: AstrMessageEvent):

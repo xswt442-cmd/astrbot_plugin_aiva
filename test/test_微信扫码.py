@@ -19,10 +19,10 @@ from aiva.auth.wechat import (
     build_poll_query,
     build_qr_query,
     build_qr_sign_text,
+    image_mime,
+    parse_poll_status,
+    parse_qr_response,
     sign,
-    检测图片类型,
-    解析出码响应,
-    解析扫码状态,
 )
 
 
@@ -38,8 +38,8 @@ class Test签名:
         assert 串.index("sdk_ticket=") < 串.index("timestamp=")
         assert "TICKET" in 串
 
-    def test_出码参数带齐五个(self):
-        参数 = build_qr_query("TICKET", 时间戳="1700000000")
+    def test_qr_query_has_five_params(self):
+        参数 = build_qr_query("TICKET", timestamp="1700000000")
 
         assert 参数["appid"] == WECHAT_APPID
         assert 参数["scope"] == "snsapi_userinfo"
@@ -55,9 +55,9 @@ class Test签名:
         assert build_poll_query("u1") == {"f": "json", "uuid": "u1"}
 
 
-class Test解析出码:
-    def test_正常(self):
-        结果 = 解析出码响应(
+class TestParseQrResponse:
+    def test_normal(self):
+        parsed = parse_qr_response(
             {
                 "errcode": 0,
                 "uuid": "021abc",
@@ -66,59 +66,59 @@ class Test解析出码:
             }
         )
 
-        assert 结果["uuid"] == "021abc"
-        assert 结果["二维码"].startswith(b"\x89PNG")
-        assert 结果["图片类型"] == "image/png"
+        assert parsed["uuid"] == "021abc"
+        assert parsed["二维码"].startswith(b"\x89PNG")
+        assert parsed["图片类型"] == "image/png"
 
-    def test_错误码要抛(self):
+    def test_error_code_raises(self):
         with pytest.raises(RuntimeError, match="签名|出码"):
-            解析出码响应({"errcode": -11, "errmsg": "signature mismatch"})
+            parse_qr_response({"errcode": -11, "errmsg": "signature mismatch"})
 
-    def test_缺二维码要抛(self):
+    def test_missing_qr_raises(self):
         with pytest.raises(RuntimeError, match="没有二维码"):
-            解析出码响应({"errcode": 0, "uuid": "x", "qrcode": {}})
+            parse_qr_response({"errcode": 0, "uuid": "x", "qrcode": {}})
 
-    def test_缺uuid要抛(self):
+    def test_missing_uuid_raises(self):
         with pytest.raises(RuntimeError, match="没有二维码"):
-            解析出码响应({"errcode": 0, "qrcode": {"qrcodebase64": "iVBORw=="}})
+            parse_qr_response({"errcode": 0, "qrcode": {"qrcodebase64": "iVBORw=="}})
 
 
-class Test解析扫码状态:
+class TestParsePollStatus:
     @pytest.mark.parametrize(
-        ("码", "状态", "终态"),
+        ("code", "status", "terminal"),
         [(408, "等待", False), (404, "已扫码", False), (402, "过期", True), (403, "已取消", True)],
     )
-    def test_各种码(self, 码, 状态, 终态):
-        结果 = 解析扫码状态({"wx_errcode": 码, "wx_code": ""})
+    def test_each_code(self, code, status, terminal):
+        parsed = parse_poll_status({"wx_errcode": code, "wx_code": ""})
 
-        assert 结果["状态"] == 状态
-        assert 结果["终态"] is 终态
-        assert 结果["授权码"] is None
+        assert parsed["状态"] == status
+        assert parsed["终态"] is terminal
+        assert parsed["授权码"] is None
 
-    def test_已确认要带授权码(self):
-        结果 = 解析扫码状态({"wx_errcode": 405, "wx_code": "CODE123"})
+    def test_confirmed_carries_code(self):
+        parsed = parse_poll_status({"wx_errcode": 405, "wx_code": "CODE123"})
 
-        assert 结果["状态"] == "已确认"
-        assert 结果["授权码"] == "CODE123"
+        assert parsed["状态"] == "已确认"
+        assert parsed["授权码"] == "CODE123"
 
-    def test_已确认但没授权码按异常(self):
+    def test_confirmed_without_code_is_error(self):
         """响应不完整时继续等，别把空码送去换票。"""
-        结果 = 解析扫码状态({"wx_errcode": 405, "wx_code": ""})
+        parsed = parse_poll_status({"wx_errcode": 405, "wx_code": ""})
 
-        assert 结果["状态"] == "异常"
-        assert 结果["授权码"] is None
+        assert parsed["状态"] == "异常"
+        assert parsed["授权码"] is None
 
-    def test_脏数据不抛(self):
-        assert 解析扫码状态({"wx_errcode": "abc"})["状态"] == "异常"
-        assert 解析扫码状态({})["终态"] is False
+    def test_dirty_data_does_not_raise(self):
+        assert parse_poll_status({"wx_errcode": "abc"})["状态"] == "异常"
+        assert parse_poll_status({})["终态"] is False
 
 
-class Test图片类型:
+class TestImageMime:
     def test_jpeg(self):
-        assert 检测图片类型("/9j/4AAQ") == "image/jpeg"
+        assert image_mime("/9j/4AAQ") == "image/jpeg"
 
-    def test_未知前缀退回_jpeg(self):
-        assert 检测图片类型("unknown") == "image/jpeg"
+    def test_unknown_falls_back_to_jpeg(self):
+        assert image_mime("unknown") == "image/jpeg"
 
 
 class Test换票请求体:
