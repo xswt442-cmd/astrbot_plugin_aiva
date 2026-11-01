@@ -120,6 +120,6 @@ async def main(only_check: str | None = None) -> int:
 
 if __name__ == "__main__":
     parse = argparse.ArgumentParser(description="探测掌瓦接口是否还活着")
-    parse.add_argument("--只看", help="只探某个路径")
+    parse.add_argument("--only", dest="only_check", help="只探某个路径")
     params = parse.parse_args()
     sys.exit(asyncio.run(main(params.only_check)))
