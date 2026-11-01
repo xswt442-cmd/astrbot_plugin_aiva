@@ -21,18 +21,18 @@ from astrbot.core.platform.astrbot_message import (  # noqa: E402
 from astrbot.core.platform.platform_metadata import PlatformMetadata  # noqa: E402
 
 
-def 造事件(文本: str) -> AstrMessageEvent:
+def make_event(text: str) -> AstrMessageEvent:
     msg = AstrBotMessage()
     msg.type = MessageType.GROUP_MESSAGE
     return AstrMessageEvent(
-        message_str=文本,
+        message_str=text,
         message_obj=msg,
         platform_meta=PlatformMetadata("qq_official", "lg1", "lg1"),
         session_id="ZnNe/2A8FDBA44C38D5B4863B0F49D76E744E",
     )
 
 
-async def 主() -> None:
+async def main() -> None:
     import data.plugins.astrbot_plugin_aiva.main  # noqa: F401
     from astrbot.core.star.star_handler import (
         EventType,
@@ -45,33 +45,33 @@ async def 主() -> None:
         plugins_name=None,
     )
     for h in hs:
-        路径 = str(h.handler_module_path)
-        if "aiva" in 路径 or "ainong" in 路径:
-            print(f"  {路径} :: {h.handler_name}")
+        path = str(h.handler_module_path)
+        if "aiva" in path or "ainong" in path:
+            print(f"  {path} :: {h.handler_name}")
 
     print(f"\n合计 {len(hs)} 个 AdapterMessageEvent handler")
 
     # 只验证 handler 激活情况，不跑完整 pipeline（需要完整 ctx）
     from astrbot.core.star.filter.command_group import CommandGroupFilter
 
-    event = 造事件("爱瓦 绑定")
+    event = make_event("爱瓦 绑定")
     event.is_at_or_wake_command = True
     event.is_wake = True
-    激活 = []
+    activated = []
     for h in hs:
-        通过 = True
+        passed = True
         for f in h.event_filters:
             try:
                 if not f.filter(event, {}):
-                    通过 = False
+                    passed = False
                     break
             except Exception:  # noqa: BLE001
-                通过 = False
+                passed = False
                 break
-        if 通过 and not any(isinstance(f, CommandGroupFilter) for f in h.event_filters):
-            激活.append(h.handler_name)
-    print(f"\n对'爱瓦 绑定' 会激活的 handler：{激活}")
+        if passed and not any(isinstance(f, CommandGroupFilter) for f in h.event_filters):
+            activated.append(h.handler_name)
+    print(f"\n对'爱瓦 绑定' 会激活的 handler：{activated}")
 
 
 if __name__ == "__main__":
-    asyncio.run(主())
+    asyncio.run(main())

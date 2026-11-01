@@ -22,7 +22,7 @@ from astrbot.core.star.star_handler import (  # noqa: E402
 )
 
 
-def 造(文本: str):
+def build(text: str):
     from astrbot.core.platform.astr_message_event import AstrMessageEvent
     from astrbot.core.platform.astrbot_message import (
         AstrBotMessage,
@@ -33,7 +33,7 @@ def 造(文本: str):
     msg = AstrBotMessage()
     msg.type = MessageType.GROUP_MESSAGE
     e = AstrMessageEvent(
-        message_str=文本,
+        message_str=text,
         message_obj=msg,
         platform_meta=PlatformMetadata("qq_official", "lg1", "lg1"),
         session_id="s",
@@ -43,19 +43,19 @@ def 造(文本: str):
     return e
 
 
-def 报告() -> None:
+def report() -> None:
     handlers = star_handlers_registry.get_handlers_by_event_type(
         EventType.AdapterMessageEvent,
         plugins_name=None,
     )
     print(f"总 handler 数：{len(handlers)}")
 
-    本插件 = []
+    this_plugin = []
     for h in handlers:
         if "aiva" in str(h.handler_module_path):
-            本插件.append(h)
-            是组 = any(isinstance(f, CommandGroupFilter) for f in h.event_filters)
-            print(f"\n== {h.handler_name}  是组handler={是组}")
+            this_plugin.append(h)
+            is_group = any(isinstance(f, CommandGroupFilter) for f in h.event_filters)
+            print(f"\n== {h.handler_name}  是组handler={is_group}")
             print(f"   extras_configs={getattr(h, 'extras_configs', None)}")
             for f in h.event_filters:
                 if isinstance(f, CommandGroupFilter):
@@ -70,35 +70,35 @@ def 报告() -> None:
                     print(f"   - {type(f).__name__}")
 
     print("\n\n===== 模拟 waking_check：对 '爱瓦 绑定' 逐 handler 试filter =====")
-    event = 造("爱瓦 绑定")
-    for h in 本插件:
-        通过 = True
-        细节 = []
+    event = build("爱瓦 绑定")
+    for h in this_plugin:
+        passed = True
+        details = []
         for f in h.event_filters:
             try:
                 r = f.filter(event, {})
             except Exception as e:  # noqa: BLE001
-                细节.append(f"{type(f).__name__}=EXC({e})")
-                通过 = False
+                details.append(f"{type(f).__name__}=EXC({e})")
+                passed = False
                 break
-            细节.append(f"{type(f).__name__}={r}")
+            details.append(f"{type(f).__name__}={r}")
             if not r:
-                通过 = False
+                passed = False
                 break
-        print(f"  {'✅' if 通过 else '— '} {h.handler_name}: {细节}")
+        print(f"  {'✅' if passed else '— '} {h.handler_name}: {details}")
 
     print("\n===== 若某handler 通过，parsed_params =====")
-    event2 = 造("爱瓦 绑定")
-    for h in 本插件:
+    event2 = build("爱瓦 绑定")
+    for h in this_plugin:
         for f in h.event_filters:
             try:
                 if f.filter(event2, {}):
-                    打印 = event2.get_extra(default={})
-                    if "parsed_params" in 打印:
-                        print(f"  {h.handler_name}: {打印['parsed_params']}")
+                    dump = event2.get_extra(default={})
+                    if "parsed_params" in dump:
+                        print(f"  {h.handler_name}: {dump['parsed_params']}")
             except Exception:  # noqa: BLE001
                 pass
 
 
 if __name__ == "__main__":
-    报告()
+    report()

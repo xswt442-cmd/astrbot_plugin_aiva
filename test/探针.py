@@ -14,7 +14,7 @@ import sys
 sys.path.insert(0, "/AstrBot")
 sys.path.insert(0, "/AstrBot/data/plugins/astrbot_plugin_aiva")
 
-import data.plugins.astrbot_plugin_aiva.main as 爱瓦插件  # noqa: E402
+import data.plugins.astrbot_plugin_aiva.main as aiva_plugin  # noqa: E402
 from astrbot.core.platform.astr_message_event import AstrMessageEvent  # noqa: E402
 from astrbot.core.platform.astrbot_message import (  # noqa: E402
     AstrBotMessage,
@@ -26,18 +26,18 @@ from astrbot.core.star.filter.command_group import (  # noqa: E402
     CommandGroupFilter,
 )
 
-候选 = [
+candidates = [
     "/爱瓦 绑定",
     "爱瓦 绑定",
     "[At:qq_official] /爱瓦 绑定",
 ]
 
 
-def 造事件(文本: str) -> AstrMessageEvent:
+def make_event(text: str) -> AstrMessageEvent:
     msg = AstrBotMessage()
     msg.type = MessageType.GROUP_MESSAGE
     e = AstrMessageEvent(
-        message_str=文本,
+        message_str=text,
         message_obj=msg,
         platform_meta=PlatformMetadata("qq_official", "lg1", "lg1"),
         session_id="ZnNe/2A8FDBA44C38D5B4863B0F49D76E744E",
@@ -46,36 +46,36 @@ def 造事件(文本: str) -> AstrMessageEvent:
     return e
 
 
-def 主():
+def main():
     # 装饰器建出来的组挂在 RegisteringCommandable 上
-    实例 = 爱瓦插件.Main.__new__(爱瓦插件.Main)
-    组 = 实例.爱瓦.parent_group
-    assert isinstance(组, CommandGroupFilter)
-    print("指令组完整名：", 组.get_complete_command_names())
-    print("custom_filter：", [type(c).__name__ for c in 组.custom_filter_list])
-    子 = 组.sub_command_filters
-    print("子命令：", [s.command_name for s in 子])
-    print("子命令 custom_filter 数：", [len(s.custom_filter_list) for s in 子])
+    instance = aiva_plugin.Main.__new__(aiva_plugin.Main)
+    group = instance.aiva_group.parent_group
+    assert isinstance(group, CommandGroupFilter)
+    print("指令组完整名：", group.get_complete_command_names())
+    print("custom_filter：", [type(c).__name__ for c in group.custom_filter_list])
+    child = group.sub_command_filters
+    print("子命令：", [s.command_name for s in child])
+    print("子命令 custom_filter 数：", [len(s.custom_filter_list) for s in child])
     print()
 
     # 组上的 filter + 每个子指令的 filter，合成 waking_check 实际跑的链路
-    链路 = [("组", 组)] + [(s.command_name, s) for s in 子]
+    chain = [("组", group)] + [(s.command_name, s) for s in child]
 
-    for 文本 in 候选:
-        print(f"===== message_str = {文本!r} =====")
-        for 名, f in 链路:
-            event = 造事件(文本)
+    for text in candidates:
+        print(f"===== message_str = {text!r} =====")
+        for name, f in chain:
+            event = make_event(text)
             try:
                 r = f.filter(event, {})
             except Exception as e:  # noqa: BLE001
-                print(f"  {名}: 抛错 {type(e).__name__}: {e}")
+                print(f"  {name}: 抛错 {type(e).__name__}: {e}")
                 continue
-            额外 = ""
+            extra = ""
             if isinstance(f, CommandFilter) and event.get_extra(default={}).get("parsed_params"):
-                额外 = f" params={event.get_extra(default={})['parsed_params']}"
-            print(f"  {'✅' if r else '— '} {名}: {r}{额外}")
+                extra = f" params={event.get_extra(default={})['parsed_params']}"
+            print(f"  {'✅' if r else '— '} {name}: {r}{extra}")
         print()
 
 
 if __name__ == "__main__":
-    主()
+    main()

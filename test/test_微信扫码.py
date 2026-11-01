@@ -26,32 +26,32 @@ from aiva.auth.wechat import (
 )
 
 
-class Test签名:
-    def test_签的是_sha1_不是_base64(self):
-        串 = "appid=wx123&noncestr=1&sdk_ticket=t&timestamp=100"
-        assert sign(串) == hashlib.sha1(串.encode()).hexdigest()
-        assert len(sign(串)) == 40
+class TestSignature:
+    def test_signs_sha1_not_base64(self):
+        raw = "appid=wx123&noncestr=1&sdk_ticket=t&timestamp=100"
+        assert sign(raw) == hashlib.sha1(raw.encode()).hexdigest()
+        assert len(sign(raw)) == 40
 
-    def test_票据在时间戳之前(self):
-        串 = build_qr_sign_text("wx1", "nonce", "TICKET", "1700000000")
+    def test_ticket_before_timestamp(self):
+        raw = build_qr_sign_text("wx1", "nonce", "TICKET", "1700000000")
 
-        assert 串.index("sdk_ticket=") < 串.index("timestamp=")
-        assert "TICKET" in 串
+        assert raw.index("sdk_ticket=") < raw.index("timestamp=")
+        assert "TICKET" in raw
 
     def test_qr_query_has_five_params(self):
-        参数 = build_qr_query("TICKET", timestamp="1700000000")
+        params = build_qr_query("TICKET", timestamp="1700000000")
 
-        assert 参数["appid"] == WECHAT_APPID
-        assert 参数["scope"] == "snsapi_userinfo"
-        assert 参数["timestamp"] == "1700000000"
-        assert 参数["signature"] == sign(
-            build_qr_sign_text(WECHAT_APPID, 参数["noncestr"], "TICKET", "1700000000")
+        assert params["appid"] == WECHAT_APPID
+        assert params["scope"] == "snsapi_userinfo"
+        assert params["timestamp"] == "1700000000"
+        assert params["signature"] == sign(
+            build_qr_sign_text(WECHAT_APPID, params["noncestr"], "TICKET", "1700000000")
         )
 
-    def test_每轮随机串不同(self):
+    def test_noncestr_changes_each_round(self):
         assert build_qr_query("T")["noncestr"] != build_qr_query("T")["noncestr"]
 
-    def test_轮询参数(self):
+    def test_poll_query(self):
         assert build_poll_query("u1") == {"f": "json", "uuid": "u1"}
 
 
@@ -121,7 +121,7 @@ class TestImageMime:
         assert image_mime("unknown") == "image/jpeg"
 
 
-class Test换票请求体:
+class TestLoginBody:
     """少传字段的代价：后端回 2025 + 内层 10002，看起来像「码无效」。
 
     2026-10-25 实测走了两轮弯路：只传 `login_info.code` 时，扫码成功后换票
@@ -129,26 +129,26 @@ class Test换票请求体:
     mcode 才对。
     """
 
-    def test_四个字段都在(self):
+    def test_all_four_fields_present(self):
         from aiva.transport import wechat_login_body
 
-        信息 = wechat_login_body("CODE")["login_info"]
-        assert 信息["code"] == "CODE"
-        assert 信息["appid"] == "wxcbb49f1f39656c2a"
-        assert 信息["check_third_type"] == 1
-        assert 信息["wx_info_type"] == 1
+        info = wechat_login_body("CODE")["login_info"]
+        assert info["code"] == "CODE"
+        assert info["appid"] == "wxcbb49f1f39656c2a"
+        assert info["check_third_type"] == 1
+        assert info["wx_info_type"] == 1
 
-    def test_用微信渠道的_mcode(self):
+    def test_uses_wechat_mcode(self):
         from aiva.transport import wechat_login_body
 
-        体 = wechat_login_body("CODE")
-        assert 体["mcode"] == "69028af6dca2c107f4f58290100011b1a303"
-        assert 体["mcode"] != "132f0a77d34402abc8463d60100011d19b0e", "那是 QQ 渠道的"
+        body = wechat_login_body("CODE")
+        assert body["mcode"] == "69028af6dca2c107f4f58290100011b1a303"
+        assert body["mcode"] != "132f0a77d34402abc8463d60100011d19b0e", "那是 QQ 渠道的"
 
-    def test_带渠道与区服(self):
+    def test_carries_zone(self):
         from aiva.transport import wechat_login_body
 
-        体 = wechat_login_body("CODE")
-        assert 体["source_game_zone"] == "agame"
-        assert 体["game_zone"] == "agame"
-        assert 体["mappid"] == 10200
+        body = wechat_login_body("CODE")
+        assert body["source_game_zone"] == "agame"
+        assert body["game_zone"] == "agame"
+        assert body["mappid"] == 10200

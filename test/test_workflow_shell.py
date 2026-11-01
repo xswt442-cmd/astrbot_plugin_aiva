@@ -16,12 +16,12 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-工作流目录 = Path(__file__).resolve().parent.parent / ".github" / "workflows"
+WORKFLOW_DIR = Path(__file__).resolve().parent.parent / ".github" / "workflows"
 
 # bash 的变量赋值与引用：NAME= / $NAME / ${NAME} / $'...' 之外的普通形式
-_赋值 = re.compile(r"^\s*(?:export\s+)?([^\s=]+)=")
-_引用 = re.compile(r"\$\{?([A-Za-z_][A-Za-z0-9_]*)")
-_内建 = {
+_ASSIGN = re.compile(r"^\s*(?:export\s+)?([^\s=]+)=")
+_REFERENCE = re.compile(r"\$\{?([A-Za-z_][A-Za-z0-9_]*)")
+_BUILTINS = {
     "BASH",
     "PATH",
     "HOME",
@@ -60,34 +60,34 @@ _内建 = {
 }
 
 
-def _逐步检查(名称: str, 原文: str) -> list[str]:
+def _check_stepwise(name: str, raw: str) -> list[str]:
     """只看 run: 块里的 shell，YAML 结构和 echo 的中文不算。"""
-    问题: list[str] = []
-    在脚本里 = False
-    for 行号, 行 in enumerate(原文.splitlines(), 1):
-        if not 在脚本里:
-            if re.match(r"^\s*run:\s*\|", 行):
-                在脚本里 = True
+    problems: list[str] = []
+    in_script = False
+    for lineno, line in enumerate(raw.splitlines(), 1):
+        if not in_script:
+            if re.match(r"^\s*run:\s*\|", line):
+                in_script = True
             continue
 
-        赋值 = _赋值.match(行)
-        if 赋值 and not 赋值.group(1).isascii():
-            问题.append(f"{名称}:{行号} 变量名非 ASCII：{赋值.group(1)}")
+        assign = _ASSIGN.match(line)
+        if assign and not assign.group(1).isascii():
+            problems.append(f"{name}:{lineno} 变量名非 ASCII：{assign.group(1)}")
 
-        for 变量 in _引用.findall(行):
-            if not 变量.isascii():
-                问题.append(f"{名称}:{行号} 引用非 ASCII 变量：${变量}")
+        for variables in _REFERENCE.findall(line):
+            if not variables.isascii():
+                problems.append(f"{name}:{lineno} 引用非 ASCII 变量：${variables}")
 
-    return 问题
-
-
-def test_工作流里的_shell_变量名都是_ascii():
-    问题: list[str] = []
-    for 路径 in sorted(工作流目录.glob("*.yml")):
-        问题 += _逐步检查(路径.name, 路径.read_text(encoding="utf-8"))
-    assert not 问题, "bash 不接受非 ASCII 变量名，改用 ASCII：\n" + "\n".join(问题)
+    return problems
 
 
-def test_工作流目录非空():
+def test_shell_var_names_are_ascii():
+    problems: list[str] = []
+    for path in sorted(WORKFLOW_DIR.glob("*.yml")):
+        problems += _check_stepwise(path.name, path.read_text(encoding="utf-8"))
+    assert not problems, "bash 不接受非 ASCII 变量名，改用 ASCII：\n" + "\n".join(problems)
+
+
+def test_workflow_dir_not_empty():
     """确认 glob 没写错，否则上面那条会静默通过。"""
-    assert list(工作流目录.glob("*.yml")), f"{工作流目录} 下没有找到工作流文件"
+    assert list(WORKFLOW_DIR.glob("*.yml")), f"{WORKFLOW_DIR} 下没有找到工作流文件"

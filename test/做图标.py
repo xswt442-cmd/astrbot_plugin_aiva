@@ -23,64 +23,64 @@ from pathlib import Path
 
 from PIL import Image
 
-仓库根 = Path(__file__).resolve().parent.parent
-源图路径 = 仓库根 / "icon" / "aiva-icon.png"
-输出路径 = 仓库根 / "logo.png"
+REPO_ROOT = Path(__file__).resolve().parent.parent
+SOURCE_PATH = REPO_ROOT / "icon" / "aiva-icon.png"
+OUTPUT_PATH = REPO_ROOT / "logo.png"
 
-边长 = 256
+SIZE = 256
 
 # 背景判定：亮度 r+g+b 低于这个值且 RGB 差异不大（不是彩色图案）就算背景。
 # 用来自检「圆形裁切不会切到图案」——如果图案贴边了要人工换源图。
-_背景亮度上限 = 100
+BG_BRIGHTNESS_MAX = 100
 
 
-def 主() -> None:
-    源 = Image.open(源图路径).convert("RGB")
-    宽, 高 = 源.size
-    if 宽 != 高:
-        sys.exit(f"源图 {宽}×{高} 不是正方形，先裁方再放进来")
+def main() -> None:
+    source = Image.open(SOURCE_PATH).convert("RGB")
+    width, height = source.size
+    if width != height:
+        sys.exit(f"源图 {width}×{height} 不是正方形，先裁方再放进来")
 
-    图 = 源.resize((边长, 边长), Image.LANCZOS)
-    自检(图)
+    image = source.resize((SIZE, SIZE), Image.LANCZOS)
+    self_check(image)
 
     # optimize 让 PNG 用最省的压缩方式
-    图.save(输出路径, format="PNG", optimize=True)
-    print(f"{输出路径.relative_to(仓库根)}：{图.size[0]}×{图.size[1]} {图.mode}")
-    print(f"{输出路径.stat().st_size} 字节")
+    image.save(OUTPUT_PATH, format="PNG", optimize=True)
+    print(f"{OUTPUT_PATH.relative_to(REPO_ROOT)}：{image.size[0]}×{image.size[1]} {image.mode}")
+    print(f"{OUTPUT_PATH.stat().st_size} 字节")
 
 
-def 自检(图: Image.Image) -> None:
+def self_check(image: Image.Image) -> None:
     """确认圆形裁切安全：图案最外沿到画布边的距离要够。
 
     逐行找第一个非背景像素。图案离画布边太近的话，圆形头像裁切时
     会把徽章切掉一角——那种问题肉眼看缩略图注意不到，发出去才发现。
     """
-    像素 = 图.load()
+    pixels = image.load()
 
-    def 是背景(x: int, y: int) -> bool:
-        r, g, b = 像素[x, y]
-        return r + g + b <= _背景亮度上限
+    def is_bg(x: int, y: int) -> bool:
+        r, g, b = pixels[x, y]
+        return r + g + b <= BG_BRIGHTNESS_MAX
 
     # 从四条边往里扫，取图案最先出现的位置
-    边距 = []
-    for x in range(边长):
-        列 = [y for y in range(边长) if not 是背景(x, y)]
-        if 列:
-            边距.append(min(列, key=lambda y: min(y, 边长 - 1 - y)))
-    if not 边距:
+    margin = []
+    for x in range(SIZE):
+        column = [y for y in range(SIZE) if not is_bg(x, y)]
+        if column:
+            margin.append(min(column, key=lambda y: min(y, SIZE - 1 - y)))
+    if not margin:
         sys.exit("整张图都被判成背景，自检阈值可能不对")
-    最近 = min(
-        min(边距),
+    nearest = min(
+        min(margin),
         min(
-            min(x for x in range(边长) if not 是背景(x, y))
-            for y in range(0, 边长, 4)
-            if any(not 是背景(x, y) for x in range(边长))
+            min(x for x in range(SIZE) if not is_bg(x, y))
+            for y in range(0, SIZE, 4)
+            if any(not is_bg(x, y) for x in range(SIZE))
         ),
     )
     # 圆形裁切半径 128，图案必须在半径内：离边至少留 12px 余量
-    if 最近 < 12:
-        sys.exit(f"图案最外沿离画布边只有 {最近}px，圆形裁切会切到它；把源图缩小些再放进来")
+    if nearest < 12:
+        sys.exit(f"图案最外沿离画布边只有 {nearest}px，圆形裁切会切到它；把源图缩小些再放进来")
 
 
 if __name__ == "__main__":
-    主()
+    main()

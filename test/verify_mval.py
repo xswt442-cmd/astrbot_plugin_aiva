@@ -23,8 +23,8 @@ import sys
 
 import aiohttp
 
-_接口根 = "https://app.mval.qq.com"
-_查询 = "source_game_zone=agame&game_zone=agame"
+BASE_URL = "https://app.mval.qq.com"
+COMMON_QUERY = "source_game_zone=agame&game_zone=agame"
 
 _UA = (
     "mval/2.4.0.10053 Channel/10068 Manufacturer/Xiaomi "
@@ -34,7 +34,7 @@ _UA = (
 )
 
 # 本插件实际用到的：POST。
-_POST端点 = (
+POST_ENDPOINTS = (
     "/go/auth/login_by_qq",
     "/go/account/get_main_role_raw",
     "/go/agame/career/record/list",
@@ -43,81 +43,83 @@ _POST端点 = (
 
 # 本插件**不用**、但第三方实现依赖的。留在这里是为了知道它什么时候真的死。
 # 注意它是 GET 接口：拿 POST 打会拿到 404，那是请求方式不匹配，不是端点废弃。
-_已知未使用 = (("/go/agame/career/mode/filter", "GET"),)
+KNOWN_UNUSED = (("/go/agame/career/mode/filter", "GET"),)
 
-_空凭据Cookie = (
+EMPTY_COOKIE = (
     "clientType=9; uin=o0; appid=102061775; acctype=qc; openid=null; "
     "access_token=null; userId=0; accountType=5; tid=0"
 )
 
 
-async def _探(方法: str, 路径: str) -> tuple[int, str]:
-    头 = {
+async def probe(method: str, path: str) -> tuple[int, str]:
+    headers = {
         "Accept": "*/*",
         "Accept-Language": "zh-CN,zh;q=0.9",
         "Content-Type": "application/json",
         "User-Agent": _UA,
-        "Cookie": _空凭据Cookie,
+        "Cookie": EMPTY_COOKIE,
     }
-    timeout是 = aiohttp.ClientTimeout(total=15)
-    async with aiohttp.ClientSession(timeout=timeout是) as 会话:
-        async with 会话.request(
-            方法, f"{_接口根}{路径}?{_查询}", headers=头, json={"_t": 0}
-        ) as 响应:
+    timeout_s = aiohttp.ClientTimeout(total=15)
+    async with aiohttp.ClientSession(timeout=timeout_s) as session:
+        async with session.request(
+            method, f"{BASE_URL}{path}?{COMMON_QUERY}", headers=headers, json={"_t": 0}
+        ) as response:
             # 原文回传，只在打印时截断：先截断再 json.loads 会必然失败，
             # 然后被误判成「不是 JSON」。
-            return 响应.status, await 响应.text(errors="ignore")
+            return response.status, await response.text(errors="ignore")
 
 
-def _判定(状态: int, 文本: str) -> str:
-    if 状态 == 404:
+def judge(status: int, text: str) -> str:
+    if status == 404:
         return "❌ 这个请求方式下没有（404）"
-    if 状态 != 200:
-        return f"⚠️ HTTP {状态}"
+    if status != 200:
+        return f"⚠️ HTTP {status}"
     try:
-        原始 = json.loads(文本)
+        raw = json.loads(text)
     except json.JSONDecodeError:
-        return f"⚠️ 不是 JSON（{文本[:60]!r}）"
-    码 = 原始.get("result", -1)
-    if 码 == 0:
+        return f"⚠️ 不是 JSON（{text[:60]!r}）"
+    code = raw.get("result", -1)
+    if code == 0:
         return "✅ 通了（居然不要登录）"
-    if 码 == 999999:
+    if code == 999999:
         return "✅ 活着（要求登录，符合预期）"
-    return f"✅ 活着（result={码}: {原始.get('errMsg') or 原始.get('msg') or ''}）"
+    return f"✅ 活着（result={code}: {raw.get('errMsg') or raw.get('msg') or ''}）"
 
 
-async def 主(只看: str | None = None) -> int:
-    检查表 = [路径 for 路径 in _POST端点 if not 只看 or 路径 == 只看] or _POST端点
-    失败 = 0
-    for 路径 in 检查表:
+async def main(only_check: str | None = None) -> int:
+    checks = [
+        path for path in POST_ENDPOINTS if not only_check or path == only_check
+    ] or POST_ENDPOINTS
+    failures = 0
+    for path in checks:
         try:
-            状态, 文本 = await _探("POST", 路径)
+            status, text = await probe("POST", path)
         except Exception as exc:  # noqa: BLE001 - 探测脚本要把异常显示出来
-            print(f"⚠️ {路径} 连不上：{type(exc).__name__}: {exc}")
-            失败 += 1
+            print(f"⚠️ {path} 连不上：{type(exc).__name__}: {exc}")
+            failures += 1
             continue
-        判定 = _判定(状态, 文本)
-        print(f"{判定}  POST {路径}")
-        if 判定.startswith(("❌", "⚠️")):
-            失败 += 1
+        verdict = judge(status, text)
+        print(f"{verdict}  POST {path}")
+        if verdict.startswith(("❌", "⚠️")):
+            failures += 1
 
-    if 只看:
-        return 1 if 失败 else 0
+    if only_check:
+        return 1 if failures else 0
 
-    for 路径, 方法 in _已知未使用:
+    for path, method in KNOWN_UNUSED:
         try:
-            状态, 文本 = await _探(方法, 路径)
+            status, text = await probe(method, path)
         except Exception as exc:  # noqa: BLE001
-            print(f"·  {方法} {路径} 连不上：{type(exc).__name__}")
+            print(f"·  {method} {path} 连不上：{type(exc).__name__}")
             continue
-        判定 = _判定(状态, 文本)
-        print(f"·  {判定}  {方法} {路径}（本插件不用，仅供参考）")
+        verdict = judge(status, text)
+        print(f"·  {verdict}  {method} {path}（本插件不用，仅供参考）")
 
-    return 1 if 失败 else 0
+    return 1 if failures else 0
 
 
 if __name__ == "__main__":
-    解析 = argparse.ArgumentParser(description="探测掌瓦接口是否还活着")
-    解析.add_argument("--只看", help="只探某个路径")
-    参数 = 解析.parse_args()
-    sys.exit(asyncio.run(主(参数.只看)))
+    parse = argparse.ArgumentParser(description="探测掌瓦接口是否还活着")
+    parse.add_argument("--只看", help="只探某个路径")
+    params = parse.parse_args()
+    sys.exit(asyncio.run(main(params.only_check)))

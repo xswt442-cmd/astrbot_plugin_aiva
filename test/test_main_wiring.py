@@ -20,62 +20,62 @@ from aiva.fallback import (
     starts_with_group,
 )
 
-源码目录 = Path(__file__).resolve().parent.parent
-main源 = 源码目录 / "main.py"
+REPO_ROOT = Path(__file__).resolve().parent.parent
+MAIN_SOURCE = REPO_ROOT / "main.py"
 
 
-def _树() -> ast.Module:
-    return ast.parse(main源.read_text(encoding="utf-8"))
+def _tree() -> ast.Module:
+    return ast.parse(MAIN_SOURCE.read_text(encoding="utf-8"))
 
 
-def _类() -> ast.ClassDef:
-    for 节点 in _树().body:
-        if isinstance(节点, ast.ClassDef) and 节点.name == "Main":
-            return 节点
+def _main_class() -> ast.ClassDef:
+    for node in _tree().body:
+        if isinstance(node, ast.ClassDef) and node.name == "Main":
+            return node
     raise AssertionError("main.py 里没有 Main 类")
 
 
-def _正式指令名() -> set[str]:
-    """类体里 `@爱瓦.command("x")` 声明的正式指令名，不含别名。"""
-    出: set[str] = set()
-    for 节点 in _类().body:
-        for 装饰 in 节点.decorator_list:
-            if not isinstance(装饰, ast.Call) or "command" not in ast.unparse(装饰.func):
+def _formal_command_names() -> set[str]:
+    """类体里 `@aiva_group.command("x")` 声明的正式指令名，不含别名。"""
+    names: set[str] = set()
+    for node in _main_class().body:
+        for deco in node.decorator_list:
+            if not isinstance(deco, ast.Call) or "command" not in ast.unparse(deco.func):
                 continue
-            if 装饰.args and isinstance(装饰.args[0], ast.Constant):
-                出.add(str(装饰.args[0].value))
-    return 出
+            if deco.args and isinstance(deco.args[0], ast.Constant):
+                names.add(str(deco.args[0].value))
+    return names
 
 
-def _指令名() -> set[str]:
-    """类体里 `@爱瓦.command("x", alias={...})` 声明的全部名字与别名。"""
-    出 = _正式指令名()
-    for 节点 in _类().body:
-        for 装饰 in 节点.decorator_list:
-            if not isinstance(装饰, ast.Call) or "command" not in ast.unparse(装饰.func):
+def _all_command_names() -> set[str]:
+    """类体里 `@aiva_group.command("x", alias={...})` 声明的全部名字与别名。"""
+    names = _formal_command_names()
+    for node in _main_class().body:
+        for deco in node.decorator_list:
+            if not isinstance(deco, ast.Call) or "command" not in ast.unparse(deco.func):
                 continue
-            for 关键字 in 装饰.keywords:
-                if 关键字.arg == "alias" and isinstance(关键字.value, ast.Set):
-                    出.update(str(e.value) for e in 关键字.value.elts)
-    return 出
+            for keyword in deco.keywords:
+                if keyword.arg == "alias" and isinstance(keyword.value, ast.Set):
+                    names.update(str(e.value) for e in keyword.value.elts)
+    return names
 
 
-class Test组名:
-    def test_组名是爱瓦(self):
-        常量 = {
-            目标.targets[0].id: 目标.value.value
-            for 目标 in _树().body
-            if isinstance(目标, ast.Assign)
-            and isinstance(目标.targets[0], ast.Name)
-            and isinstance(目标.value, ast.Constant)
+class TestGroupName:
+    def test_group_name_is_aiva(self):
+        constants = {
+            assign.targets[0].id: assign.value.value
+            for assign in _tree().body
+            if isinstance(assign, ast.Assign)
+            and isinstance(assign.targets[0], ast.Name)
+            and isinstance(assign.value, ast.Constant)
         }
-        assert 常量.get("_GROUP") == "爱瓦"
+        assert constants.get("_GROUP") == "爱瓦"
 
-    def test_兜底过滤器用同一个组名(self):
-        文本 = main源.read_text(encoding="utf-8")
-        assert "is_command_miss(text, _GROUP)" in 文本
+    def test_fallback_filter_uses_same_group(self):
+        text = MAIN_SOURCE.read_text(encoding="utf-8")
+        assert "is_command_miss(text, _GROUP)" in text
 
-    def test_兜底过滤器恒返回True(self):
+    def test_fallback_filter_always_returns_true(self):
         """`CustomFilter.filter` 返回 False 会让整个指令组被跳过。
 
         AstrBot 的 `CommandGroupFilter.filter` 里是
@@ -85,78 +85,83 @@ class Test组名:
         不属于我的消息要立刻放行。写成「命中返回 False」时 `/爱瓦 绑定`
         完全没反应。
         """
-        方法 = _兜底过滤器()
-        返回 = [
-            节点.value.value
-            for 节点 in ast.walk(方法)
-            if isinstance(节点, ast.Return) and isinstance(节点.value, ast.Constant)
+        method = _fallback_filter()
+        returns = [
+            node.value.value
+            for node in ast.walk(method)
+            if isinstance(node, ast.Return) and isinstance(node.value, ast.Constant)
         ]
-        assert 返回 and set(返回) == {True}, f"兜底 filter 里出现了 {返回}，必须只return True"
+        assert returns and set(returns) == {True}, (
+            f"兜底 filter 里出现了 {returns}，必须只return True"
+        )
         # 命中分支必须 set_result + stop_event，否则消息会漏给模型
-        assert "event.stop_event()" in ast.unparse(方法)
+        assert "event.stop_event()" in ast.unparse(method)
         # 必须先判「关不关我事」再动手，否则会掐掉别的插件的指令
-        assert "starts_with_group" in ast.unparse(方法)
+        assert "starts_with_group" in ast.unparse(method)
 
 
-def _帮助块() -> str:
-    文本 = main源.read_text(encoding="utf-8")
-    起点 = 文本.index('_HELP_TEXT = """') + len('_HELP_TEXT = """')
-    return 文本[起点 : 文本.index('"""', 起点)]
+def _help_block() -> str:
+    text = MAIN_SOURCE.read_text(encoding="utf-8")
+    start = text.index('_HELP_TEXT = """') + len('_HELP_TEXT = """')
+    return text[start : text.index('"""', start)]
 
 
-def _兜底过滤器() -> ast.FunctionDef:
-    for 节点 in _树().body:
-        if isinstance(节点, ast.ClassDef) and 节点.name == "_MissFallbackFilter":
-            for 体 in 节点.body:
-                if isinstance(体, ast.FunctionDef) and 体.name == "filter":
-                    return 体
+def _fallback_filter() -> ast.FunctionDef:
+    for node in _tree().body:
+        if isinstance(node, ast.ClassDef) and node.name == "_MissFallbackFilter":
+            for item in node.body:
+                if isinstance(item, ast.FunctionDef) and item.name == "filter":
+                    return item
     raise AssertionError("main.py 里没有 _MissFallbackFilter.filter")
 
 
-class Test兜底同步:
-    def test_每个指令都在兜底名单里(self):
+class TestFallbackSync:
+    def test_every_command_in_fallback_list(self):
         # 落一个别名没同步，用户打那个别名就会被当成废话，
         # 拿到一句「不是子命令」。
-        缺 = _指令名() - SUBCOMMANDS
-        assert not 缺, f"这些指令/别名没写进 fallback.SUBCOMMANDS：{sorted(缺)}"
+        missing = _all_command_names() - SUBCOMMANDS
+        assert not missing, f"这些指令/别名没写进 fallback.SUBCOMMANDS：{sorted(missing)}"
 
-    def test_帮助里列了每个指令(self):
+    def test_help_lists_every_command(self):
         """帮助漏一条，用户就只能靠猜或问。
 
         只查正式指令名：别名是给习惯写法兜底的，不必逐条列进帮助。
         """
-        缺 = sorted(名 for 名 in _正式指令名() if f"/爱瓦 {名}" not in _帮助块())
-        assert not 缺, f"帮助文本里没列这些指令：{缺}"
+        help_text = _help_block()
+        missing = sorted(
+            name for name in _formal_command_names() if f"/爱瓦 {name}" not in help_text
+        )
+        assert not missing, f"帮助文本里没列这些指令：{missing}"
 
-    def test_帮助说明_PK_写昵称而不是艾特群友(self):
+    def test_help_says_pk_by_nickname(self):
         """QQ 官方机器人收不到 @别人，README 曾在这一点上写错。
 
         帮助里收成一行一句后不再解释原因，但写法必须还是「写昵称」。
         """
-        assert "PK <群友昵称>" in _帮助块()
+        assert "PK <群友昵称>" in _help_block()
 
-    def test_帮助首行是产品名加游戏名(self):
-        assert _帮助块().lstrip().startswith("爱瓦 · ")
+    def test_help_first_line_has_product_and_game(self):
+        assert _help_block().lstrip().startswith("爱瓦 · ")
 
-    def test_标题写明数据来自哪里(self):
+    def test_title_states_data_source(self):
         """文案收成一行一句后，数据来源只留在标题里。"""
-        assert "国服" in _帮助块().splitlines()[0]
+        assert "国服" in _help_block().splitlines()[0]
 
-    def test_说明自然语言也能用(self):
-        assert "自然语言" in _帮助块()
+    def test_help_mentions_natural_language(self):
+        assert "自然语言" in _help_block()
 
 
-class Test兜底不越界:
+class TestFallbackScope:
     """兜底过滤器绝不能碰别人的消息。
 
     `CommandGroupFilter.filter` 先跑 `custom_filter_ok()`、之后才检查组名，
     所以挂在指令组上的过滤器对**每一条消息**都执行。原实现里
-    `取落空参数` 对不属于自己的消息原样返回，导致「爱农 状态」被当成
+    `leftover_arg` 对不属于自己的消息原样返回，导致「爱农 状态」被当成
     「爱瓦的子命令落空」而`stop_event()` —— 爱农因此从能用变成完全没反应。
     """
 
     @pytest.mark.parametrize(
-        "消息",
+        "message",
         [
             "爱农 状态",
             "/爱农 绑定",
@@ -167,21 +172,21 @@ class Test兜底不越界:
             "爱瓦",
         ],
     )
-    def test_别人的消息不判定为落空(self, 消息: str):
-        assert not is_command_miss(消息, "爱瓦"), f"{消息!r} 被误判成爱瓦的落空"
+    def test_other_plugin_messages_not_miss(self, message: str):
+        assert not is_command_miss(message, "爱瓦"), f"{message!r} 被误判成爱瓦的落空"
 
-    @pytest.mark.parametrize("消息", ["爱瓦 瞎写的", "/爱瓦 瞎写的"])
-    def test_爱瓦的瞎写才算落空(self, 消息: str):
-        assert is_command_miss(消息, "爱瓦"), f"{消息!r} 应该判成落空但没有"
+    @pytest.mark.parametrize("message", ["爱瓦 瞎写的", "/爱瓦 瞎写的"])
+    def test_aiva_garbage_is_miss(self, message: str):
+        assert is_command_miss(message, "爱瓦"), f"{message!r} 应该判成落空但没有"
 
     @pytest.mark.parametrize(
-        "消息",
+        "message",
         ["爱瓦 绑定", "/爱瓦 绑定", "爱瓦战绩", "爱瓦 PK", "爱瓦 help"],
     )
-    def test_爱瓦的正常指令不算落空(self, 消息: str):
-        assert not is_command_miss(消息, "爱瓦"), f"{消息!r} 是正常指令，不该被判成落空"
+    def test_aiva_valid_command_not_miss(self, message: str):
+        assert not is_command_miss(message, "爱瓦"), f"{message!r} 是正常指令，不该被判成落空"
 
-    def test_leftover_arg_对陌生消息返回空(self):
+    def test_leftover_arg_empty_for_foreign_message(self):
         # 返回原样文本是上一版 bug 的根源：调用方无从分辨「不归我管」
         assert leftover_arg("爱农 状态", "爱瓦") == ""
         assert leftover_arg("爱瓦 瞎写的", "爱瓦") == "瞎写的"
@@ -193,33 +198,33 @@ class Test兜底不越界:
         assert not starts_with_group("", "爱瓦")
 
 
-def _日志调用() -> list[str]:
+def _log_calls() -> list[str]:
     """把 main.py 里所有 `logger.xxx(...)` 的内容源码抠出来。"""
-    出: list[str] = []
-    for 节点 in ast.walk(_树()):
-        if not isinstance(节点, ast.Call):
+    calls: list[str] = []
+    for node in ast.walk(_tree()):
+        if not isinstance(node, ast.Call):
             continue
-        函数 = 节点.func
-        if isinstance(函数, ast.Attribute) and getattr(函数.value, "id", "") == "logger":
-            出.extend(ast.unparse(参数) for 参数 in 节点.args)
-    return 出
+        func = node.func
+        if isinstance(func, ast.Attribute) and getattr(func.value, "id", "") == "logger":
+            calls.extend(ast.unparse(arg) for arg in node.args)
+    return calls
 
 
-class Test凭据不外泄:
-    def test_日志里不带凭据字段(self):
+class TestNoCredentialLeak:
+    def test_logs_have_no_credential_fields(self):
         # 换票时把 openid/access_token 传给 transport 是必需的，不算泄。
         # 泄的是把它写进 logger——日志会被到处收集、分发。
-        for 参数 in _日志调用():
-            for 敏感 in ("access_token", "openid", "tid", "credential["):
-                assert 敏感 not in 参数, f"日志带上了凭据字段：{参数}"
+        for arg in _log_calls():
+            for secret in ("access_token", "openid", "tid", "credential["):
+                assert secret not in arg, f"日志带上了凭据字段：{arg}"
 
-    def test_日志里不会出现整个凭据对象(self):
+    def test_logs_never_dump_whole_credential(self):
         # 直接把 dict 丢进 f-string 会把四样全打印出来。
-        for 参数 in _日志调用():
-            assert not any(f"{{{名}}}" in 参数 for 名 in ("credential",))
+        for arg in _log_calls():
+            assert not any(f"{{{name}}}" in arg for name in ("credential",))
 
 
-class Test源码卫生:
+class TestSourceHygiene:
     """两类只在运行时才炸、本地又跑不到的写法。
 
     都不是靠读代码能稳定发现的：漏 f 前缀的字符串**语法完全合法**，只有用户
@@ -228,87 +233,87 @@ class Test源码卫生:
     是「对方登录态过期」，测试环境根本碰不到。
     """
 
-    def test_没有漏f前缀的字符串(self):
+    def test_no_missing_f_prefix(self):
         """字符串里出现 `{名字}` 形状却不是 f-string，就是漏了前缀。"""
-        占位 = re.compile(r"\{[^{}\n]{1,40}\}")
-        漏 = []
-        for 节点 in ast.walk(_树()):
-            if not isinstance(节点, ast.Constant) or not isinstance(节点.value, str):
+        placeholder = re.compile(r"\{[^{}\n]{1,40}\}")
+        leaks = []
+        for node in ast.walk(_tree()):
+            if not isinstance(node, ast.Constant) or not isinstance(node.value, str):
                 continue
-            for 命中 in 占位.finditer(节点.value):
-                漏.append((节点.lineno, 命中.group(0)))
-        assert not 漏, f"这些字符串里的占位符不会被替换（漏了 f 前缀）：{漏}"
+            for hit in placeholder.finditer(node.value):
+                leaks.append((node.lineno, hit.group(0)))
+        assert not leaks, f"这些字符串里的占位符不会被替换（漏了 f 前缀）：{leaks}"
 
-    def test_except里不读try体内才绑定的变量(self):
-        """`甲列表` 那种：`取对局` 抛异常时它还没绑上，except 里一读就炸。
+    def test_except_does_not_read_try_bound_vars(self):
+        """`my_list` 那种：`fetch_matches` 抛异常时它还没绑上，except 里一读就炸。
 
         线上真出过：PK 时对方登录态过期，本该回一句「对方登录态失效」，
         实际抛 `UnboundLocalError`，用户只看到机器人没反应。
         """
-        问题 = []
-        for 函数 in _顶层函数():
-            for 函数名, 行号, 名字 in _未绑定读取(函数):
-                问题.append(f"{函数名} 第{行号}行 except 里读了 {sorted(名字)}")
-        assert not 问题, "\n".join(问题)
+        problems = []
+        for func in _all_functions():
+            for func_name, lineno, names in _unbound_reads(func):
+                problems.append(f"{func_name} 第{lineno}行 except 里读了 {sorted(names)}")
+        assert not problems, "\n".join(problems)
 
 
-def _顶层函数() -> list[ast.AsyncFunctionDef | ast.FunctionDef]:
+def _all_functions() -> list[ast.AsyncFunctionDef | ast.FunctionDef]:
     return [
-        节点
-        for 节点 in ast.walk(_树())
-        if isinstance(节点, (ast.AsyncFunctionDef, ast.FunctionDef))
+        node
+        for node in ast.walk(_tree())
+        if isinstance(node, (ast.AsyncFunctionDef, ast.FunctionDef))
     ]
 
 
-def _绑定的(节点们: list[ast.AST]) -> set[str]:
-    出: set[str] = set()
-    for 节点 in 节点们:
-        for 子 in ast.walk(节点):
-            if isinstance(子, ast.Name) and isinstance(子.ctx, ast.Store):
-                出.add(子.id)
-            if isinstance(子, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                出.add(子.name)
-            if isinstance(子, ast.ExceptHandler) and 子.name:
-                出.add(子.name)
-    return 出
+def _bound_names(nodes: list[ast.AST]) -> set[str]:
+    names: set[str] = set()
+    for node in nodes:
+        for child in ast.walk(node):
+            if isinstance(child, ast.Name) and isinstance(child.ctx, ast.Store):
+                names.add(child.id)
+            if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                names.add(child.name)
+            if isinstance(child, ast.ExceptHandler) and child.name:
+                names.add(child.name)
+    return names
 
 
-def _未绑定读取(函数: ast.AsyncFunctionDef | ast.FunctionDef) -> list[tuple[str, int, set]]:
+def _unbound_reads(func: ast.AsyncFunctionDef | ast.FunctionDef) -> list[tuple[str, int, set]]:
     """找出 `except` 里读了「同一个 try 体内才绑定」的变量的地方。"""
-    报告: list[tuple[str, int, set]] = []
-    已绑 = {参数.arg for 参数 in 函数.args.args}
+    report: list[tuple[str, int, set]] = []
+    bound = {arg.arg for arg in func.args.args}
 
-    def 扫(节点们: list[ast.stmt]) -> None:
-        for 节点 in 节点们:
-            if isinstance(节点, ast.Try):
-                体内 = _绑定的(节点.body)
-                for 处理 in 节点.handlers:
-                    读到 = {
-                        子.id
-                        for 子 in ast.walk(处理)
-                        if isinstance(子, ast.Name) and isinstance(子.ctx, ast.Load)
+    def scan(nodes: list[ast.stmt]) -> None:
+        for node in nodes:
+            if isinstance(node, ast.Try):
+                body_names = _bound_names(node.body)
+                for handler in node.handlers:
+                    read = {
+                        child.id
+                        for child in ast.walk(handler)
+                        if isinstance(child, ast.Name) and isinstance(child.ctx, ast.Load)
                     }
-                    可疑 = (读到 & 体内) - 已绑
-                    if 可疑:
-                        报告.append((函数.name, 节点.lineno, 可疑))
-                扫(节点.body)
-                for 处理 in 节点.handlers:
-                    扫(处理.body)
-                    已绑.update(_绑定的(处理.body))
-                扫(节点.orelse)
-                扫(节点.finalbody)
-                已绑.update(体内)
-            elif hasattr(节点, "body") and isinstance(节点.body, list):
-                已绑.update(_绑定的([节点]))
-                扫(节点.body)
+                    suspect = (read & body_names) - bound
+                    if suspect:
+                        report.append((func.name, node.lineno, suspect))
+                scan(node.body)
+                for handler in node.handlers:
+                    scan(handler.body)
+                    bound.update(_bound_names(handler.body))
+                scan(node.orelse)
+                scan(node.finalbody)
+                bound.update(body_names)
+            elif hasattr(node, "body") and isinstance(node.body, list):
+                bound.update(_bound_names([node]))
+                scan(node.body)
 
-    扫(函数.body)
-    return 报告
+    scan(func.body)
+    return report
 
 
-class Test导入齐全:
+class TestImports:
     @pytest.mark.parametrize(
-        "名字",
+        "name",
         [
             "QrSession",
             "build_match_setup",
@@ -336,79 +341,77 @@ class Test导入齐全:
             "miss_hint",
         ],
     )
-    def test_用到的符号在导入段出现过(self, 名字: str):
-        文本 = main源.read_text(encoding="utf-8")
-        assert 名字 in 文本
+    def test_symbols_appear_in_import_block(self, name: str):
+        text = MAIN_SOURCE.read_text(encoding="utf-8")
+        assert name in text
 
 
-class Test日志出口:
+class TestLoggerSource:
     """插件规范：logger 必须且只能从 `astrbot.api` 取，不许用内置 `logging`。
 
     爱农上架审核第一次就是被这一条驳回的（`ainong/auth/` 下两个模块用了内置
     `logging`，只看 main.py 查不出来）。这里扫整个包，防止同样的写法溜进来。
     """
 
-    def test_包内不用内置logging(self):
-        违规 = [
-            路径.name
-            for 路径 in sorted(main源.parent.joinpath("aiva").rglob("*.py"))
-            if re.search(r"^\s*(?:import logging|from logging)\b", 路径.read_text("utf-8"), re.M)
+    def test_no_builtin_logging_in_package(self):
+        offenders = [
+            path.name
+            for path in sorted(MAIN_SOURCE.parent.joinpath("aiva").rglob("*.py"))
+            if re.search(r"^\s*(?:import logging|from logging)\b", path.read_text("utf-8"), re.M)
         ]
-        assert not 违规, f"这些文件用了内置 logging，要改成从 astrbot.api 取：{违规}"
+        assert not offenders, f"这些文件用了内置 logging，要改成从 astrbot.api 取：{offenders}"
 
-    def test_logger_从_astrbot_取(self):
-        源码 = main源.read_text(encoding="utf-8")
-        assert re.search(r"^from astrbot\.api import .*\blogger\b", 源码, re.M)
+    def test_logger_comes_from_astrbot(self):
+        source = MAIN_SOURCE.read_text(encoding="utf-8")
+        assert re.search(r"^from astrbot\.api import .*\blogger\b", source, re.M)
 
 
-class Test审核合规:
+class TestMarketplaceRules:
     """市场审核的硬要求，驳回一次就要重提一个版本号，钉死。"""
 
-    def test_数据目录用插件名(self):
+    def test_data_dir_uses_plugin_name(self):
         """规则是 `data/plugin_data/<plugin_name>`，`<plugin_name>` 指目录名。"""
-        源码 = main源.read_text(encoding="utf-8")
-        assert "StarTools.get_data_dir(_PLUGIN_NAME)" in 源码
-        assert '_PLUGIN_NAME = "astrbot_plugin_aiva"' in 源码
-        assert '"plugin_data" / "aiva"' not in 源码
+        source = MAIN_SOURCE.read_text(encoding="utf-8")
+        assert "StarTools.get_data_dir(_PLUGIN_NAME)" in source
+        assert '_PLUGIN_NAME = "astrbot_plugin_aiva"' in source
+        assert '"plugin_data" / "aiva"' not in source
 
-    def test_旧目录会被迁移(self):
+    def test_legacy_dir_migrated(self):
         """升级不能把已有绑定丢掉。"""
-        源码 = main源.read_text(encoding="utf-8")
-        assert "_migrate_legacy_credentials(data_dir)" in 源码
-        assert '_LEGACY_DATA_DIR = "aiva"' in 源码
+        source = MAIN_SOURCE.read_text(encoding="utf-8")
+        assert "_migrate_legacy_credentials(data_dir)" in source
+        assert '_LEGACY_DATA_DIR = "aiva"' in source
 
-    def test_不关_TLS_校验(self):
+    def test_tls_verification_not_disabled(self):
         """请求里带 openid/access_token/tid，关掉校验等于交给中间人。"""
-        传输 = (源码目录 / "aiva" / "transport.py").read_text(encoding="utf-8")
-        assert "CERT_NONE" not in 传输
-        assert "check_hostname = False" not in 传输
-        assert "verify_mode" not in 传输
-        assert "ssl=" not in 传输
+        transport = (REPO_ROOT / "aiva" / "transport.py").read_text(encoding="utf-8")
+        assert "CERT_NONE" not in transport
+        assert "check_hostname = False" not in transport
+        assert "verify_mode" not in transport
+        assert "ssl=" not in transport
 
 
-class Test空指令给帮助:
+class TestBareCommandHelp:
     """只发 `/爱瓦` 时回帮助，别甩框架的「参数不足」。
 
     2026-10-29 实测：`/爱瓦 @某人` 落到框架那层，回的是「参数不足」加全部
     子命令和各自的 docstring——一大段内部说明，用户还是不知道能发什么。
     """
 
-    @pytest.mark.parametrize("消息", ["/爱瓦", "爱瓦", "/爱瓦   ", "爱瓦 "])
-    def test_只发组名算空指令(self, 消息: str):
-
-        assert is_bare_command(消息, "爱瓦")
+    @pytest.mark.parametrize("message", ["/爱瓦", "爱瓦", "/爱瓦   ", "爱瓦 "])
+    def test_bare_group_is_bare_command(self, message: str):
+        assert is_bare_command(message, "爱瓦")
 
     @pytest.mark.parametrize(
-        "消息",
+        "message",
         ["/爱瓦 战绩", "爱瓦战绩", "/爱农 状态", "今天天气不错", ""],
     )
-    def test_带参数或别人的消息不算(self, 消息: str):
+    def test_with_arg_or_foreign_not_bare(self, message: str):
+        assert not is_bare_command(message, "爱瓦")
 
-        assert not is_bare_command(消息, "爱瓦")
-
-    def test_过滤器回帮助而不是落空提示(self):
-        源 = (Path(__file__).resolve().parent.parent / "main.py").read_text(encoding="utf-8")
-        体 = 源[源.index("class _MissFallbackFilter") :]
-        体 = 体[: 体.index("class Main(")]
-        assert "is_bare_command(" in 体
-        assert "_HELP_TEXT" in 体, "空指令要回帮助，不能只说「不是子命令」"
+    def test_filter_returns_help_not_miss_hint(self):
+        source = (Path(__file__).resolve().parent.parent / "main.py").read_text(encoding="utf-8")
+        block = source[source.index("class _MissFallbackFilter") :]
+        block = block[: block.index("class Main(")]
+        assert "is_bare_command(" in block
+        assert "_HELP_TEXT" in block, "空指令要回帮助，不能只说「不是子命令」"
