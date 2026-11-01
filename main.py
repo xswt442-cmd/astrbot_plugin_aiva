@@ -38,7 +38,7 @@ from .aiva.fallback import (
 )
 from .aiva.match import build_match_setup, setup_text
 from .aiva.pk import find_opponent, mention_summary, opponent_from_mentions, opponent_from_raw
-from .aiva.prompts import PK提示, 开局提示, 锐评提示
+from .aiva.prompts import match_prompt, pk_prompt, review_prompt
 from .aiva.stats import 占优项数, 对比文本, 对比要点, 聚合, 近况文本
 from .aiva.storage import (
     CredentialStore,
@@ -626,7 +626,7 @@ class Main(Star):
 
         文本 = 数据[0]
         try:
-            结果 = await self._问模型(event, 锐评提示(文本))
+            结果 = await self._问模型(event, review_prompt(文本))
         except Exception as exc:
             logger.warning(f"[aiva] 锐评调用模型失败：{type(exc).__name__}: {exc}")
             yield event.plain_result(f"调用模型失败：{exc}")
@@ -653,7 +653,7 @@ class Main(Star):
         随机源 = random.Random()
         设定 = build_match_setup(随机源, 摘要 if 摘要 and 摘要.get("场数") else None)
         try:
-            结果 = await self._问模型(event, 开局提示(setup_text(设定)))
+            结果 = await self._问模型(event, match_prompt(setup_text(设定)))
         except Exception as exc:
             logger.warning(f"[aiva] 开一局调用模型失败：{type(exc).__name__}: {exc}")
             yield event.plain_result(f"调用模型失败：{exc}")
@@ -774,7 +774,7 @@ class Main(Star):
         try:
             结果 = await self._问模型(
                 event,
-                PK提示(
+                pk_prompt(
                     甲名,
                     乙名,
                     对比文本(要点, 甲名, 乙名),
