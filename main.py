@@ -36,7 +36,7 @@ from .aiva.fallback import (
     miss_hint,
     starts_with_group,
 )
-from .aiva.match import 开局设定, 设定文本
+from .aiva.match import build_match_setup, setup_text
 from .aiva.pk import find_opponent, mention_summary, opponent_from_mentions, opponent_from_raw
 from .aiva.prompts import PK提示, 开局提示, 锐评提示
 from .aiva.stats import 占优项数, 对比文本, 对比要点, 聚合, 近况文本
@@ -651,15 +651,15 @@ class Main(Star):
                 logger.info(f"[aiva] 开一局读战绩失败，按默认水平：{exc}")
 
         随机源 = random.Random()
-        设定 = 开局设定(随机源, 摘要 if 摘要 and 摘要.get("场数") else None)
+        设定 = build_match_setup(随机源, 摘要 if 摘要 and 摘要.get("场数") else None)
         try:
-            结果 = await self._问模型(event, 开局提示(设定文本(设定)))
+            结果 = await self._问模型(event, 开局提示(setup_text(设定)))
         except Exception as exc:
             logger.warning(f"[aiva] 开一局调用模型失败：{type(exc).__name__}: {exc}")
             yield event.plain_result(f"调用模型失败：{exc}")
             return
         if not 结果:
-            yield event.plain_result(f"模型没有返回内容。这局的设定：\n\n{设定文本(设定)}")
+            yield event.plain_result(f"模型没有返回内容。这局的设定：\n\n{setup_text(设定)}")
             return
         yield event.plain_result(结果)
 

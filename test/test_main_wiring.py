@@ -311,8 +311,8 @@ class Test导入齐全:
         "名字",
         [
             "扫码会话",
-            "开局设定",
-            "设定文本",
+            "build_match_setup",
+            "setup_text",
             "找对手",
             "PK提示",
             "开局提示",

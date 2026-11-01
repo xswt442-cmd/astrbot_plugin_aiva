@@ -10,7 +10,7 @@ import random
 
 import pytest
 
-from aiva.match import 加时比分, 地图池, 常规比分, 开局设定, 设定文本
+from aiva.match import MAP_POOL, build_match_setup, overtime_score, regular_score, setup_text
 from aiva.stats import 拆KDA, 一场, 占优项数, 对比文本, 对比要点, 看胜负, 聚合
 
 
@@ -133,60 +133,60 @@ class Test对比:
         assert 占优项数(要点, "甲", "乙") == "甲 2 项、乙 1 项"
 
 
-class Test开一局:
-    def test_常规比分合法(self):
+class TestMatchSetup:
+    def test_regular_score_is_legal(self):
         for _ in range(200):
-            甲, 乙 = 常规比分(random.Random())
-            assert max(甲, 乙) == 13, (甲, 乙)
-            assert min(甲, 乙) <= 12
+            a, b = regular_score(random.Random())
+            assert max(a, b) == 13, (a, b)
+            assert min(a, b) <= 12
 
-    def test_加时要净胜2(self):
+    def test_overtime_wins_by_two(self):
         for _ in range(200):
-            甲, 乙 = 加时比分(random.Random())
-            assert abs(甲 - 乙) == 2
-            assert max(甲, 乙) >= 14
+            a, b = overtime_score(random.Random())
+            assert abs(a - b) == 2
+            assert max(a, b) >= 14
 
-    def test_输赢与比分自洽(self):
-        for 随机源 in (random.Random(i) for i in range(300)):
-            设定 = 开局设定(随机源, None)
-            己, 对 = (int(x) for x in 设定["比分"].split(":"))
-            assert (己 > 对) == 设定["是否胜利"]
-            if 设定["加时"]:
-                assert abs(己 - 对) == 2
+    def test_score_matches_win_flag(self):
+        for rng in (random.Random(i) for i in range(300)):
+            setup = build_match_setup(rng, None)
+            ours, theirs = (int(x) for x in setup["比分"].split(":"))
+            assert (ours > theirs) == setup["是否胜利"]
+            if setup["加时"]:
+                assert abs(ours - theirs) == 2
             else:
-                assert max(己, 对) == 13
+                assert max(ours, theirs) == 13
 
-    def test_回合数等于比分之和(self):
-        设定 = 开局设定(random.Random(7), None)
-        assert 设定["回合数"] == sum(int(x) for x in 设定["比分"].split(":"))
+    def test_rounds_equal_score_sum(self):
+        setup = build_match_setup(random.Random(7), None)
+        assert setup["回合数"] == sum(int(x) for x in setup["比分"].split(":"))
 
-    def test_死人不许负_也不许离谱(self):
+    def test_deaths_are_sane(self):
         for i in range(200):
-            设定 = 开局设定(random.Random(i), None)
-            assert 设定["死亡"] >= 1
-            assert 设定["击杀"] >= 1
-            assert 设定["回合数"] >= 10
+            setup = build_match_setup(random.Random(i), None)
+            assert setup["死亡"] >= 1
+            assert setup["击杀"] >= 1
+            assert setup["回合数"] >= 10
 
-    def test_爆头数不超过击杀(self):
+    def test_headshots_not_more_than_kills(self):
         for i in range(200):
-            设定 = 开局设定(random.Random(i), None)
-            assert 0 <= 设定["爆头数"] <= 设定["击杀"]
+            setup = build_match_setup(random.Random(i), None)
+            assert 0 <= setup["爆头数"] <= setup["击杀"]
 
-    def test_有真实数据时不报错且更贴近本人(self):
-        摘要 = 聚合([一局(kda="25/8/3", acs=320, 结果="获胜")] * 8)
-        设定 = 开局设定(random.Random(3), 摘要)
+    def test_uses_real_stats_when_available(self):
+        summary = 聚合([一局(kda="25/8/3", acs=320, 结果="获胜")] * 8)
+        setup = build_match_setup(random.Random(3), summary)
         # 一个 8 连胜、ACS 320 的人，推演出来的 ACS 不该掉到 100 上下
-        assert 设定["ACS"] > 200
+        assert setup["ACS"] > 200
 
-    def test_设定文本带上必要字段(self):
-        文本 = 设定文本(开局设定(random.Random(1), None))
-        for 键 in ("地图：", "使用特工：", "比分：", "ACS：", "精准击败率"):
-            assert 键 in 文本
+    def test_setup_text_has_required_fields(self):
+        text = setup_text(build_match_setup(random.Random(1), None))
+        for field in ("地图：", "使用特工：", "比分：", "ACS：", "精准击败率"):
+            assert field in text
 
-    def test_地图名必须来自官方名单(self):
+    def test_map_name_comes_from_official_pool(self):
         # 这批中文名是从 valorant-api.com 取的，不许手改成「自造名」
-        设定 = 开局设定(random.Random(9), None)
-        assert 设定["地图"] in 地图池
+        setup = build_match_setup(random.Random(9), None)
+        assert setup["地图"] in MAP_POOL
 
 
 class Test一场:
