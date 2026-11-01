@@ -41,28 +41,28 @@ import re
 from typing import Any
 
 __all__ = [
-    "找对手",
-    "从提及里找对手",
-    "从原始载荷认对手",
-    "提及摘要",
-    "不是标识的提及",
+    "FAKE_MENTION_IDS",
+    "find_opponent",
+    "mention_summary",
+    "opponent_from_mentions",
+    "opponent_from_raw",
 ]
 
 # `<@1234>` 与 `<@!1234>` 两种写法都存在。长度下限用来滤掉 `<@1>` 这类噪声。
-_正文提及 = re.compile(r"<@!?([A-Za-z0-9_-]{6,})>")
+_BODY_MENTION = re.compile(r"<@!?([A-Za-z0-9_-]{6,})>")
 
 # 这些值在 At.qq 里出现过，都不是真实用户。
-不是标识的提及 = frozenset({"qq_official", "all", "unknown_selfid"})
+FAKE_MENTION_IDS = frozenset({"qq_official", "all", "unknown_selfid"})
 
 
-def _可用(候选: Any, 排除: set[str]) -> str | None:
-    值 = str(候选 or "").strip()
-    if not 值 or 值 in 不是标识的提及 or 值 in 排除:
+def _usable(candidate: Any, excluded: set[str]) -> str | None:
+    value = str(candidate or "").strip()
+    if not value or value in FAKE_MENTION_IDS or value in excluded:
         return None
-    return 值
+    return value
 
 
-def 从提及里找对手(原始消息: Any, *, 自己: str = "", 机器人: str = "") -> str | None:
+def opponent_from_mentions(raw_message: Any, *, me: str = "", bot_id: str = "") -> str | None:
     """从 `raw_message.mentions` 里找对手，找不到返回 None。
 
     跳过 `is_you` 的（那是 @机器人）和 `bot` 的。
@@ -70,49 +70,49 @@ def 从提及里找对手(原始消息: Any, *, 自己: str = "", 机器人: str
     注意：QQ 官方平台上实测这个数组是**空的**（见模块 docstring），所以
     别把它当唯一入口。
     """
-    排除 = {值 for 值 in (自己, 机器人) if 值}
-    for 提及 in getattr(原始消息, "mentions", None) or []:
-        if getattr(提及, "is_you", False):
+    excluded = {value for value in (me, bot_id) if value}
+    for mention in getattr(raw_message, "mentions", None) or []:
+        if getattr(mention, "is_you", False):
             continue
-        if getattr(提及, "bot", False):
+        if getattr(mention, "bot", False):
             continue
-        候选 = _可用(_标识(提及), 排除)
-        if 候选:
-            return 候选
+        candidate = _usable(_mention_id(mention), excluded)
+        if candidate:
+            return candidate
     return None
 
 
-def _标识(项: Any) -> str:
+def _mention_id(item: Any) -> str:
     """从一个 mention 对象里取用户标识。
 
     `botpy` 的 mention 有 `id` / `member_openid` / `user_openid` 三个可能的
     字段，谁有值取谁——`member_openid` 才是群里的用户标识，也正是
     `get_sender_id()` 返回的那个。
     """
-    for 名 in ("member_openid", "id", "user_openid"):
-        值 = str(getattr(项, 名, "") or "").strip()
-        if 值:
-            return 值
+    for field in ("member_openid", "id", "user_openid"):
+        value = str(getattr(item, field, "") or "").strip()
+        if value:
+            return value
     return ""
 
 
-def 提及摘要(原始消息: Any) -> list[dict[str, Any]]:
+def mention_summary(raw_message: Any) -> list[dict[str, Any]]:
     """把 mentions / msg_elements 压成可读的摘要，给日志用。"""
-    出 = []
-    for 提及 in getattr(原始消息, "mentions", None) or []:
-        出.append(
+    rows = []
+    for mention in getattr(raw_message, "mentions", None) or []:
+        rows.append(
             {
-                "member_openid": getattr(提及, "member_openid", None),
-                "id": getattr(提及, "id", None),
-                "username": getattr(提及, "username", None),
-                "is_you": getattr(提及, "is_you", None),
-                "bot": getattr(提及, "bot", None),
+                "member_openid": getattr(mention, "member_openid", None),
+                "id": getattr(mention, "id", None),
+                "username": getattr(mention, "username", None),
+                "is_you": getattr(mention, "is_you", None),
+                "bot": getattr(mention, "bot", None),
             }
         )
-    return 出
+    return rows
 
 
-def 从原始载荷认对手(原始消息: Any, *, 自己: str = "", 机器人: str = "") -> str | None:
+def opponent_from_raw(raw_message: Any, *, me: str = "", bot_id: str = "") -> str | None:
     """从 QQ 原始 payload（`raw_data` / `msg_elements`）里找被 @ 的人。
 
     这是 QQ 官方平台上最有可能拿到对手的地方：`mentions` 实测为空，
@@ -124,57 +124,57 @@ def 从原始载荷认对手(原始消息: Any, *, 自己: str = "", 机器人: 
       `member_openid` / `qq`；
     - `raw_data` 里 `mentions` / `at_users` 之类数组的 `member_openid`。
     """
-    排除 = {值 for 值 in (自己, 机器人) if 值}
+    excluded = {value for value in (me, bot_id) if value}
 
-    for 元素 in getattr(原始消息, "msg_elements", None) or []:
-        if not isinstance(元素, dict):
+    for element in getattr(raw_message, "msg_elements", None) or []:
+        if not isinstance(element, dict):
             continue
-        if str(元素.get("element_type") or "").lower() != "mention":
+        if str(element.get("element_type") or "").lower() != "mention":
             continue
         # mention 元素的 user_id 可能是 QQ 号，也可能是 openid
-        for 名 in ("member_openid", "user_id", "id", "qq", "user_openid"):
-            候选 = _可用(元素.get(名), 排除)
-            if 候选:
-                return 候选
+        for field in ("member_openid", "user_id", "id", "qq", "user_openid"):
+            candidate = _usable(element.get(field), excluded)
+            if candidate:
+                return candidate
 
-    载荷 = getattr(原始消息, "raw_data", None)
-    if isinstance(载荷, dict):
-        for 名 in ("mentions", "at_users", "mention_list", "at_list"):
-            数组 = 载荷.get(名)
-            if not isinstance(数组, list):
+    payload = getattr(raw_message, "raw_data", None)
+    if isinstance(payload, dict):
+        for field in ("mentions", "at_users", "mention_list", "at_list"):
+            array = payload.get(field)
+            if not isinstance(array, list):
                 continue
-            for 项 in 数组:
-                if isinstance(项, dict):
-                    候选 = _可用(
-                        项.get("member_openid")
-                        or 项.get("id")
-                        or 项.get("user_id")
-                        or 项.get("user_openid"),
-                        排除,
+            for item in array:
+                if isinstance(item, dict):
+                    candidate = _usable(
+                        item.get("member_openid")
+                        or item.get("id")
+                        or item.get("user_id")
+                        or item.get("user_openid"),
+                        excluded,
                     )
                 else:
-                    候选 = _可用(项, 排除)
-                if 候选:
-                    return 候选
+                    candidate = _usable(item, excluded)
+                if candidate:
+                    return candidate
     return None
 
 
-def 找对手(消息列表, 文本: str, *, 自己: str = "", 机器人: str = "") -> str | None:
+def find_opponent(components: Any, text: str, *, me: str = "", bot_id: str = "") -> str | None:
     """从组件链和正文里找 PK 的对手标识，找不到返回 None。
 
-    `自己` 与 `机器人` 都得排掉：群里 @机器人 同样会生成一个 At 组件，
+    `me` 与 `bot_id` 都得排掉：群里 @机器人 同样会生成一个 At 组件，
     不排掉的话「@机器人 PK @小明」会把机器人当成 PK 对象。
     """
-    排除 = {值 for 值 in (自己, 机器人) if 值}
+    excluded = {value for value in (me, bot_id) if value}
 
-    for 组件 in 消息列表 or []:
-        候选 = _可用(getattr(组件, "qq", None), 排除)
-        if 候选:
-            return 候选
+    for component in components or []:
+        candidate = _usable(getattr(component, "qq", None), excluded)
+        if candidate:
+            return candidate
 
-    for 命中 in _正文提及.finditer(文本 or ""):
-        候选 = _可用(命中.group(1), 排除)
-        if 候选:
-            return 候选
+    for hit in _BODY_MENTION.finditer(text or ""):
+        candidate = _usable(hit.group(1), excluded)
+        if candidate:
+            return candidate
 
     return None

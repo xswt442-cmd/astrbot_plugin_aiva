@@ -24,7 +24,7 @@ import ast
 import json
 from pathlib import Path
 
-from aiva.pk import 从原始载荷认对手, 从提及里找对手, 提及摘要
+from aiva.pk import mention_summary, opponent_from_mentions, opponent_from_raw
 from aiva.storage import CredentialStore, find_by_nickname, set_nickname
 
 仓库根 = Path(__file__).resolve().parent.parent
@@ -56,7 +56,7 @@ class Test原始载荷:
             ],
             mentions=[],
         )
-        assert 从原始载荷认对手(原始) == "YJJ_openid_123"
+        assert opponent_from_raw(原始) == "YJJ_openid_123"
 
     def test_member_openid优先(self):
         原始 = 假原始(
@@ -69,43 +69,43 @@ class Test原始载荷:
             ]
         )
         # member_openid 才是跟凭据文件同体系的标识
-        assert 从原始载荷认对手(原始) == "openid_abc"
+        assert opponent_from_raw(原始) == "openid_abc"
 
     def test_跳过非mention元素(self):
         原始 = 假原始(msg_elements=[{"element_type": "text", "content": "user_id: 假的"}])
-        assert 从原始载荷认对手(原始) is None
+        assert opponent_from_raw(原始) is None
 
     def test_raw_data里的mentions(self):
         原始 = 假原始(raw_data={"mentions": [{"member_openid": "op_from_raw"}]})
-        assert 从原始载荷认对手(原始) == "op_from_raw"
+        assert opponent_from_raw(原始) == "op_from_raw"
 
     def test_raw_data_at_users(self):
         原始 = 假原始(raw_data={"at_users": ["op_at_users"]})
-        assert 从原始载荷认对手(原始) == "op_at_users"
+        assert opponent_from_raw(原始) == "op_at_users"
 
     def test_跳过机器人(self):
         原始 = 假原始(msg_elements=[{"element_type": "mention", "user_id": "机器人_id"}])
-        assert 从原始载荷认对手(原始, 机器人="机器人_id") is None
+        assert opponent_from_raw(原始, bot_id="机器人_id") is None
 
     def test_空载荷不炸(self):
-        assert 从原始载荷认对手(None) is None
-        assert 从原始载荷认对手(假原始()) is None
-        assert 从原始载荷认对手(假原始(raw_data="不是字典")) is None
+        assert opponent_from_raw(None) is None
+        assert opponent_from_raw(假原始()) is None
+        assert opponent_from_raw(假原始(raw_data="不是字典")) is None
 
 
 class Test提及回退:
     def test_认得出(self):
         原始 = 假原始(mentions=[假提及(member_openid="YJJ", is_you=False, bot=False)])
-        assert 从提及里找对手(原始) == "YJJ"
+        assert opponent_from_mentions(原始) == "YJJ"
 
     def test_跳过at机器人(self):
         原始 = 假原始(mentions=[假提及(member_openid="机器人", is_you=True)])
-        assert 从提及里找对手(原始) is None
+        assert opponent_from_mentions(原始) is None
 
-    def test_摘要带member_openid(self):
+    def test_summary_带member_openid(self):
         原始 = 假原始(mentions=[假提及(member_openid="YJJ", is_you=False)])
-        摘要 = 提及摘要(原始)
-        assert 摘要[0]["member_openid"] == "YJJ"
+        summary = mention_summary(原始)
+        assert summary[0]["member_openid"] == "YJJ"
 
 
 class Test昵称兜底:
@@ -234,13 +234,13 @@ class TestMain已接上:
             if isinstance(n, ast.AsyncFunctionDef) and n.name == "PK":
                 节点 = n
         片段 = ast.get_source_segment(源码, 节点) or ""
-        assert "从原始载荷认对手" in 片段
-        assert "从提及里找对手" in 片段
+        assert "opponent_from_raw" in 片段
+        assert "opponent_from_mentions" in 片段
         assert "find_by_nickname" in 片段, "必须有昵称兜底，@ 拿不到是既成事实"
         # 顺序：原始载荷 → mentions → 组件链/正文 → 昵称
         assert (
-            片段.index("从原始载荷认对手")
-            < 片段.index("从提及里找对手")
+            片段.index("opponent_from_raw")
+            < 片段.index("opponent_from_mentions")
             < 片段.index("find_by_nickname")
         )
 

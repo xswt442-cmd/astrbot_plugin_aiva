@@ -37,7 +37,7 @@ from .aiva.fallback import (
     starts_with_group,
 )
 from .aiva.match import 开局设定, 设定文本
-from .aiva.pk import 从原始载荷认对手, 从提及里找对手, 找对手, 提及摘要
+from .aiva.pk import find_opponent, mention_summary, opponent_from_mentions, opponent_from_raw
 from .aiva.prompts import PK提示, 开局提示, 锐评提示
 from .aiva.stats import 占优项数, 对比文本, 对比要点, 聚合, 近况文本
 from .aiva.storage import (
@@ -681,18 +681,18 @@ class Main(Star):
         原始 = getattr(消息, "raw_message", None)
         正文 = str(getattr(event, "message_str", "") or "")
 
-        对手标识 = 从原始载荷认对手(原始, 自己=自己, 机器人=机器人)
+        对手标识 = opponent_from_raw(原始, me=自己, bot_id=机器人)
         来源 = "原始报文"
         对手昵称 = ""
         if not 对手标识:
-            对手标识 = 从提及里找对手(原始, 自己=自己, 机器人=机器人)
+            对手标识 = opponent_from_mentions(原始, me=自己, bot_id=机器人)
             来源 = "提及列表"
         if not 对手标识:
-            对手标识 = 找对手(
+            对手标识 = find_opponent(
                 getattr(消息, "message", None) or [],
                 正文,
-                自己=自己,
-                机器人=机器人,
+                me=自己,
+                bot_id=机器人,
             )
             来源 = "组件链/正文"
         if not 对手标识:
@@ -714,8 +714,9 @@ class Main(Star):
         # 认不出对手时把拿到的东西记下来。QQ 官方机器人**收不到 @别人**：
         # `raw_message.mentions` 实测是 `[]`，平台压根没把被 @ 的人传下来。
         # 只记能定位问题的字段，不落消息正文与原始报文内容。
+        summary = mention_summary(原始)
         logger.info(
-            f"[aiva] PK 找对手：自己={自己!r} 认出={对手标识!r} 来源={来源} 提及={提及摘要(原始)!r}"
+            f"[aiva] PK 找对手：自己={自己!r} 认出={对手标识!r} 来源={来源} 提及={summary!r}"
         )
         if not 对手标识:
             yield event.plain_result("没认出要和谁比，写对方的名字：/爱瓦 PK <名字>。")
