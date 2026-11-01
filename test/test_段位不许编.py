@@ -64,38 +64,38 @@ class Test段位进文本:
             }
             for _ in range(4)
         ]
-        from aiva.stats import 聚合
+        from aiva.stats import aggregate
 
-        摘要 = 聚合(局)
-        assert 摘要.get("场数") == 4, f"测试数据不对，聚合出 {摘要.get('场数')} 场"
-        return 摘要
+        summary = aggregate(局)
+        assert summary.get("场数") == 4, f"测试数据不对，聚合出 {summary.get('场数')} 场"
+        return summary
 
-    def test_有段位时写进去(self):
-        from aiva.stats import 近况文本
+    def test_tier_written_when_present(self):
+        from aiva.stats import recent_text
 
-        文本 = 近况文本(self._摘要(), "钻石II")
-        assert "钻石II" in 文本
-        assert "当前段位" in 文本
+        text = recent_text(self._摘要(), "钻石II")
+        assert "钻石II" in text
+        assert "当前段位" in text
 
-    def test_段位放最前面(self):
+    def test_tier_goes_first(self):
         """模型先看到段位才会照抄。放末尾容易被长数据挤掉注意力。"""
-        from aiva.stats import 近况文本
+        from aiva.stats import recent_text
 
-        行 = 近况文本(self._摘要(), "钻石II").splitlines()
-        assert 行[0].startswith("当前段位"), f"段位应在首行，实际是：{行[0]}"
+        lines = recent_text(self._摘要(), "钻石II").splitlines()
+        assert lines[0].startswith("当前段位"), f"段位应在首行，实际是：{lines[0]}"
 
-    def test_没段位要明说别猜(self):
+    def test_missing_tier_says_so(self):
         """留空 = 模型自己编。必须明说「接口没给」。"""
-        from aiva.stats import 近况文本
+        from aiva.stats import recent_text
 
-        文本 = 近况文本(self._摘要(), "")
-        assert "接口没给" in 文本
-        assert "不许提段位" in 文本
+        text = recent_text(self._摘要(), "")
+        assert "接口没给" in text
+        assert "不许提段位" in text
 
-    def test_默认不该带上段位(self):
-        from aiva.stats import 近况文本
+    def test_no_tier_by_default(self):
+        from aiva.stats import recent_text
 
-        assert "接口没给" in 近况文本(self._摘要())
+        assert "接口没给" in recent_text(self._摘要())
 
 
 class Test提示约束:

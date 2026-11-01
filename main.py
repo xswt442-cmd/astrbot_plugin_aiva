@@ -39,7 +39,7 @@ from .aiva.fallback import (
 from .aiva.match import build_match_setup, setup_text
 from .aiva.pk import find_opponent, mention_summary, opponent_from_mentions, opponent_from_raw
 from .aiva.prompts import match_prompt, pk_prompt, review_prompt
-from .aiva.stats import 占优项数, 对比文本, 对比要点, 聚合, 近况文本
+from .aiva.stats import advantage_count, aggregate, contrast_points, contrast_text, recent_text
 from .aiva.storage import (
     CredentialStore,
     clean_nickname,
@@ -646,7 +646,7 @@ class Main(Star):
         if 凭据 and is_complete(凭据):
             try:
                 原始的对局, _角色 = await self._取对局记账(用户, 凭据)
-                摘要 = 聚合(原始的对局)
+                摘要 = aggregate(原始的对局)
             except Exception as exc:  # noqa: BLE001 - 推演不因查不到就停
                 logger.info(f"[aiva] 开一局读战绩失败，按默认水平：{exc}")
 
@@ -760,13 +760,13 @@ class Main(Star):
             yield event.plain_result(f"读取对方的战绩失败：{exc}")
             return
 
-        甲摘要 = 聚合(甲列表)
-        乙摘要 = 聚合(乙列表)
+        甲摘要 = aggregate(甲列表)
+        乙摘要 = aggregate(乙列表)
         if not 甲摘要.get("场数") or not 乙摘要.get("场数"):
             yield event.plain_result("有一边没有可统计的对局，比不了。")
             return
 
-        要点 = 对比要点(甲摘要, 乙摘要)
+        要点 = contrast_points(甲摘要, 乙摘要)
         if not 要点:
             yield event.plain_result("两边没有可比的项。")
             return
@@ -777,10 +777,10 @@ class Main(Star):
                 pk_prompt(
                     甲名,
                     乙名,
-                    对比文本(要点, 甲名, 乙名),
-                    占优项数(要点, 甲名, 乙名),
-                    近况文本(甲摘要, 取段位(甲角色)),
-                    近况文本(乙摘要, 取段位(乙角色)),
+                    contrast_text(要点, 甲名, 乙名),
+                    advantage_count(要点, 甲名, 乙名),
+                    recent_text(甲摘要, 取段位(甲角色)),
+                    recent_text(乙摘要, 取段位(乙角色)),
                 ),
             )
         except Exception as exc:
@@ -897,10 +897,10 @@ class Main(Star):
             logger.warning(f"[aiva] 取对局列表失败：{type(exc).__name__}: {exc}")
             raise 这句给用户(f"取战绩失败：{exc}") from exc
 
-        摘要 = 聚合(原始列表)
+        摘要 = aggregate(原始列表)
         if not 摘要.get("场数"):
             raise 这句给用户("没有可统计的对局。")
-        return 近况文本(摘要, 取段位(角色)), 摘要
+        return recent_text(摘要, 取段位(角色)), 摘要
 
     async def _问模型(self, event: AstrMessageEvent, 提示: str) -> str:
         """用当前会话的模型问一句话，返回它写的内容。

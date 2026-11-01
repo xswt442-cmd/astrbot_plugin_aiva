@@ -11,126 +11,136 @@ import random
 import pytest
 
 from aiva.match import MAP_POOL, build_match_setup, overtime_score, regular_score, setup_text
-from aiva.stats import 拆KDA, 一场, 占优项数, 对比文本, 对比要点, 看胜负, 聚合
+from aiva.stats import (
+    Match,
+    advantage_count,
+    aggregate,
+    contrast_points,
+    contrast_text,
+    normalize_outcome,
+    split_kda,
+)
 
 
-def 一局(
-    结果="获胜",
+def make_match(
+    result="获胜",
     kda="18/12/5",
     acs=245,
-    地图="亚海悬城",
-    特工="捷风",
-    模式="competitive",
-    己方=13,
-    对方=9,
-    **其余,
+    map_name="亚海悬城",
+    agent="捷风",
+    mode="competitive",
+    ours=13,
+    theirs=9,
+    **extra,
 ):
-    项 = {
-        "result_title": 结果,
+    item = {
+        "result_title": result,
         "kda": kda,
         "score_avg": acs,
-        "used_map": {"name": 地图},
-        "hero_name": 特工,
-        "game_enum": 模式,
-        "game_mode": "竞技模式" if 模式 == "competitive" else "普通模式",
-        "round_won": 己方,
-        "round_fail": 对方,
+        "used_map": {"name": map_name},
+        "hero_name": agent,
+        "game_enum": mode,
+        "game_mode": "竞技模式" if mode == "competitive" else "普通模式",
+        "round_won": ours,
+        "round_fail": theirs,
     }
-    项.update(其余)
-    return 项
+    item.update(extra)
+    return item
 
 
-class Test拆KDA:
-    def test_正常字符串(self):
-        assert 拆KDA("13/18/10") == (13, 18, 10)
+class TestSplitKda:
+    def test_normal_string(self):
+        assert split_kda("13/18/10") == (13, 18, 10)
 
-    def test_缺字段记零(self):
-        assert 拆KDA("13/18") == (0, 0, 0)
+    def test_missing_field_is_zero(self):
+        assert split_kda("13/18") == (0, 0, 0)
 
-    def test_空值记零(self):
-        assert 拆KDA(None) == (0, 0, 0)
-        assert 拆KDA("") == (0, 0, 0)
+    def test_empty_is_zero(self):
+        assert split_kda(None) == (0, 0, 0)
+        assert split_kda("") == (0, 0, 0)
 
-    def test_列表也能拆(self):
-        assert 拆KDA([5, 6, 7]) == (5, 6, 7)
+    def test_list_also_works(self):
+        assert split_kda([5, 6, 7]) == (5, 6, 7)
 
-    def test_带空格也行(self):
-        assert 拆KDA(" 4 / 5 / 6 ") == (4, 5, 6)
+    def test_spaces_allowed(self):
+        assert split_kda(" 4 / 5 / 6 ") == (4, 5, 6)
 
 
-class Test聚合:
-    def test_空列表不给假数据(self):
-        摘要 = 聚合([])
-        assert 摘要 == {"场数": 0}
+class TestAggregate:
+    def test_empty_list_returns_no_fake_data(self):
+        summary = aggregate([])
+        assert summary == {"场数": 0}
 
-    def test_kda拆不出来的局会被丢掉(self):
+    def test_unparsable_kda_is_dropped(self):
         # 这种局的 KDA 是 (0,0,0)，混进去会把均值拉到接近 0，
         # 那是个看起来有理、实际是错的数。
-        摘要 = 聚合([一局(kda=""), 一局(kda="13/18/10")])
-        assert 摘要["场数"] == 1
+        summary = aggregate([make_match(kda=""), make_match(kda="13/18/10")])
+        assert summary["场数"] == 1
 
-    def test_不计分模式不进统计(self):
-        assert 聚合([一局(模式="deathmatch")])["场数"] == 0
-        assert 聚合([一局(模式="teamdeathmatch")])["场数"] == 0
+    def test_unscored_modes_excluded(self):
+        assert aggregate([make_match(mode="deathmatch")])["场数"] == 0
+        assert aggregate([make_match(mode="teamdeathmatch")])["场数"] == 0
 
-    def test_胜负与胜率(self):
-        数据 = [一局(结果="获胜")] * 6 + [一局(结果="失败")] * 4
-        摘要 = 聚合(数据)
-        assert (摘要["胜"], 摘要["负"]) == (6, 4)
-        assert 摘要["胜率"] == 60.0
+    def test_wins_and_win_rate(self):
+        rows = [make_match(result="获胜")] * 6 + [make_match(result="失败")] * 4
+        summary = aggregate(rows)
+        assert (summary["胜"], summary["负"]) == (6, 4)
+        assert summary["胜率"] == 60.0
 
-    def test_平局不计入胜率分母(self):
-        摘要 = 聚合([一局(结果="获胜"), 一局(结果="失败"), 一局(结果="平局")])
-        assert 摘要["平"] == 1
-        assert 摘要["胜率"] == 50.0
+    def test_draws_not_in_denominator(self):
+        summary = aggregate(
+            [make_match(result="获胜"), make_match(result="失败"), make_match(result="平局")]
+        )
+        assert summary["平"] == 1
+        assert summary["胜率"] == 50.0
 
-    def test_场均值(self):
-        摘要 = 聚合([一局(kda="20/10/5"), 一局(kda="10/10/5")])
-        assert 摘要["场均击杀"] == 15.0
-        assert 摘要["场均助攻"] == 5.0
+    def test_per_match_averages(self):
+        summary = aggregate([make_match(kda="20/10/5"), make_match(kda="10/10/5")])
+        assert summary["场均击杀"] == 15.0
+        assert summary["场均助攻"] == 5.0
 
-    def test_ACS缺失就是None不许补零(self):
-        摘要 = 聚合([一局(acs=""), 一局(acs="")])
-        assert 摘要["场均ACS"] is None
+    def test_missing_acs_is_none(self):
+        summary = aggregate([make_match(acs=""), make_match(acs="")])
+        assert summary["场均ACS"] is None
 
-    def test_acs为字符串也能算(self):
-        摘要 = 聚合([一局(acs="200"), 一局(acs="300")])
-        assert 摘要["场均ACS"] == 250.0
+    def test_acs_as_string_still_counts(self):
+        summary = aggregate([make_match(acs="200"), make_match(acs="300")])
+        assert summary["场均ACS"] == 250.0
 
-    def test_地图聚合按场次降序(self):
-        数据 = [一局(地图="深海明珠")] * 3 + [一局(地图="霓虹町")] * 5
-        地图 = 聚合(数据)["地图"]
-        assert [r["地图"] for r in 地图] == ["霓虹町", "深海明珠"]
-        assert 地图[0]["场次"] == 5
+    def test_map_breakdown_sorted_by_count(self):
+        rows = [make_match(map_name="深海明珠")] * 3 + [make_match(map_name="霓虹町")] * 5
+        maps = aggregate(rows)["地图"]
+        assert [r["地图"] for r in maps] == ["霓虹町", "深海明珠"]
+        assert maps[0]["场次"] == 5
 
-    def test_走势按原顺序最新在前(self):
-        数据 = [一局(结果="失败"), 一局(结果="获胜"), 一局(结果="获胜")]
-        assert 聚合(数据)["走势"] == ["负", "胜", "胜"]
+    def test_streak_keeps_source_order(self):
+        rows = [make_match(result="失败"), make_match(result="获胜"), make_match(result="获胜")]
+        assert aggregate(rows)["走势"] == ["负", "胜", "胜"]
 
 
-class Test对比:
-    def test_有稀缺就不比(self):
-        assert 对比要点({"场数": 10}, {"场数": 0}) == []
+class TestContrast:
+    def test_skips_when_one_side_empty(self):
+        assert contrast_points({"场数": 10}, {"场数": 0}) == []
 
-    def test_死亡越少越好(self):
-        甲 = 聚合([一局(kda="10/5/1")])
-        乙 = 聚合([一局(kda="10/20/1")])
-        要点 = {条["项"]: 条 for 条 in 对比要点(甲, 乙)}
-        assert 要点["场均死亡"]["优"] == "甲"
+    def test_fewer_deaths_is_better(self):
+        a = aggregate([make_match(kda="10/5/1")])
+        b = aggregate([make_match(kda="10/20/1")])
+        points = {point["项"]: point for point in contrast_points(a, b)}
+        assert points["场均死亡"]["优"] == "甲"
 
-    def test_文本要说清谁占优(self):
-        甲 = 聚合([一局(kda="30/5/1"), 一局(kda="30/5/1")])
-        乙 = 聚合([一局(kda="5/30/1"), 一局(kda="5/30/1")])
-        文本 = 对比文本(对比要点(甲, 乙), "阿甲", "阿乙")
-        assert "阿甲占优" in 文本
+    def test_text_names_the_better_side(self):
+        a = aggregate([make_match(kda="30/5/1"), make_match(kda="30/5/1")])
+        b = aggregate([make_match(kda="5/30/1"), make_match(kda="5/30/1")])
+        text = contrast_text(contrast_points(a, b), "阿甲", "阿乙")
+        assert "阿甲占优" in text
 
-    def test_占优项数是事实不是结论(self):
-        要点 = [
+    def test_advantage_count_is_fact(self):
+        points = [
             {"项": "a", "优": "甲"},
             {"项": "b", "优": "甲"},
             {"项": "c", "优": "乙"},
         ]
-        assert 占优项数(要点, "甲", "乙") == "甲 2 项、乙 1 项"
+        assert advantage_count(points, "甲", "乙") == "甲 2 项、乙 1 项"
 
 
 class TestMatchSetup:
@@ -173,7 +183,7 @@ class TestMatchSetup:
             assert 0 <= setup["爆头数"] <= setup["击杀"]
 
     def test_uses_real_stats_when_available(self):
-        summary = 聚合([一局(kda="25/8/3", acs=320, 结果="获胜")] * 8)
+        summary = aggregate([make_match(kda="25/8/3", acs=320, result="获胜")] * 8)
         setup = build_match_setup(random.Random(3), summary)
         # 一个 8 连胜、ACS 320 的人，推演出来的 ACS 不该掉到 100 上下
         assert setup["ACS"] > 200
@@ -189,18 +199,18 @@ class TestMatchSetup:
         assert setup["地图"] in MAP_POOL
 
 
-class Test一场:
-    def test_零死时KDA比值不炸(self):
-        局 = 一场(一局(kda="10/0/2"))
-        assert 局.KDA比值 == 12.0
+class TestMatchRecord:
+    def test_zero_deaths_ratio_does_not_explode(self):
+        record = Match(make_match(kda="10/0/2"))
+        assert record.kda_ratio == 12.0
 
-    def test_正常比值(self):
-        assert 一场(一局(kda="18/12/5")).KDA比值 == pytest.approx((18 + 5) / 12)
+    def test_normal_ratio(self):
+        assert Match(make_match(kda="18/12/5")).kda_ratio == pytest.approx((18 + 5) / 12)
 
 
-class Test胜负归一:
+class TestNormalizeOutcome:
     @pytest.mark.parametrize(
-        "原文,期望",
+        "raw,expected",
         [
             ("获胜", "胜"),
             ("失败", "负"),
@@ -209,15 +219,12 @@ class Test胜负归一:
             (None, "未知"),
         ],
     )
-    def test_中文结果(self, 原文, 期望):
-        assert 看胜负(原文) == 期望
+    def test_chinese_results(self, raw, expected):
+        assert normalize_outcome(raw) == expected
 
 
-# 这两个符号在测试里被引用但不应该存在——留着就是为了确认它们**没有**被
-# 重新引入。stats 里曾经混进过两个拼错的导出（"逐party拼接"），那种东西
-# 会让 `from aiva.stats import *` 拿到一堆怪名字。
-def test_导出列表干净():
-    import aiva.stats as 模块
+def test_export_list_is_clean():
+    import aiva.stats as module
 
-    for 名 in 模块.__all__:
-        assert hasattr(模块, 名), f"__all__ 里写了 {名} 但模块里没有"
+    for name in module.__all__:
+        assert hasattr(module, name), f"__all__ 里写了 {name} 但模块里没有"
