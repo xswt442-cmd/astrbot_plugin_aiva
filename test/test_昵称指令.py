@@ -40,9 +40,9 @@ class Test指令存在:
 
     def test_子命令表里有昵称(self):
         """漏了这条，`/爱瓦 昵称` 会被当成落空消息，插件自己回提示。"""
-        from aiva.兜底 import 子命令名
+        from aiva.fallback import SUBCOMMANDS
 
-        assert "昵称" in 子命令名
+        assert "昵称" in SUBCOMMANDS
 
     def test_用GreedyStr接参数(self):
         """名字里可能有空格，普通参数只吃第一个词。"""

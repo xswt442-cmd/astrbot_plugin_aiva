@@ -29,6 +29,13 @@ from astrbot.core.star.filter.custom_filter import CustomFilter
 # 阶段报错，而不是等用户发了指令才在懒加载里抛模块不存在。
 from .aiva.auth.ptlogin import 扫码会话, 脱敏
 from .aiva.auth.wechat_flow import 微信出码会话
+from .aiva.fallback import (
+    is_bare_command,
+    is_command_miss,
+    leftover_arg,
+    miss_hint,
+    starts_with_group,
+)
 from .aiva.match import 开局设定, 设定文本
 from .aiva.pk import 从原始载荷认对手, 从提及里找对手, 找对手, 提及摘要
 from .aiva.prompts import PK提示, 开局提示, 锐评提示
@@ -54,7 +61,6 @@ from .aiva.transport import (
     掌瓦传输,
     登录过期,
 )
-from .aiva.兜底 import 以组名开头, 取落空参数, 是否空指令, 是否落空, 落空提示
 
 _组名 = "爱瓦"
 
@@ -199,7 +205,7 @@ class 这句给用户(Exception):
     """
 
 
-class _落空兜底(CustomFilter):
+class _MissFallbackFilter(CustomFilter):
     """`/爱瓦 <不是子命令>` 时自己接住，别让消息流到模型手里。
 
     `filter` 的返回值语义是「这条消息我管不管」，**不是**「我有没有命中」——
@@ -210,20 +216,20 @@ class _落空兜底(CustomFilter):
     """
 
     def filter(self, event: AstrMessageEvent, cfg: AstrBotConfig) -> bool:
-        文本 = getattr(event, "message_str", "") or ""
+        text = getattr(event, "message_str", "") or ""
         # 这条过滤器对**每一条消息**都会跑（CommandGroupFilter 先跑
         # custom_filter_ok 再检查组名），所以第一件事是判断关不关我事。
-        if not 以组名开头(文本, _组名):
+        if not starts_with_group(text, _组名):
             return True
-        logger.debug(f"[aiva] 指令命中 message_str={文本!r}")
-        if 是否空指令(文本, _组名):
+        logger.debug(f"[aiva] 指令命中 message_str={text!r}")
+        if is_bare_command(text, _组名):
             # 只发了「/爱瓦」：回帮助。交给框架会甩一串「参数不足」加各指令的
             # docstring，用户看到的是内部说明，不是能发什么。
             event.set_result(MessageEventResult().message(_帮助文本))
             event.stop_event()
             return True
-        if 是否落空(文本, _组名):
-            event.set_result(MessageEventResult().message(落空提示(取落空参数(文本, _组名))))
+        if is_command_miss(text, _组名):
+            event.set_result(MessageEventResult().message(miss_hint(leftover_arg(text, _组名))))
             event.stop_event()
         return True
 
@@ -231,7 +237,7 @@ class _落空兜底(CustomFilter):
 class Main(Star):
     # 别写成 `self.爱瓦.add_custom_filter(...)`——`self.爱瓦` 是
     # `RegisteringCommandable`，没有那个方法，加载时会 AttributeError。
-    @custom_filter(_落空兜底)
+    @custom_filter(_MissFallbackFilter)
     @command_group(_组名, alias=_组别名)
     def 爱瓦(self):
         """无畏契约国服战绩查询。指令都在这个组下，不占用通用名字。"""

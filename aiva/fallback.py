@@ -15,17 +15,17 @@ docstring，又长又不像是说给用户听的，直接回帮助更省事。
 from __future__ import annotations
 
 __all__ = [
-    "子命令名",
-    "以组名开头",
-    "取落空参数",
-    "是否落空",
-    "是否空指令",
-    "落空提示",
+    "SUBCOMMANDS",
+    "is_bare_command",
+    "is_command_miss",
+    "leftover_arg",
+    "miss_hint",
+    "starts_with_group",
 ]
 
 # 全部子命令与别名。少一个别名，用户打那个别名时就落空了。
 # 改 main.py 里的指令或别名，这里要跟着改——`test_main_wiring.py` 会核对。
-子命令名 = frozenset(
+SUBCOMMANDS = frozenset(
     {
         # 子命令
         "战绩",
@@ -50,21 +50,21 @@ __all__ = [
 )
 
 
-def 以组名开头(消息: str, 组名: str) -> bool:
+def starts_with_group(message: str, group_name: str) -> bool:
     """这条消息是不是以指令组名开头。
 
     **必须有这一层判断**。`CommandGroupFilter.filter` 的执行顺序是
     先跑 `custom_filter_ok()`、之后才检查组名是否匹配，所以挂在指令组上的
     过滤器对**每一条消息**都会执行——包括别的插件的指令。
-    没有这道闸，`取落空参数` 对不属于自己的消息会原样返回，于是
+    没有这道闸，`leftover_arg` 对不属于自己的消息会原样返回，于是
     「爱农 状态」被判定成「爱瓦的子命令落空」，`stop_event()` 把整条掐死。
     实测过一次：爱农因此从能用变成完全没反应。
     """
-    文本 = (消息 or "").strip()
-    return 文本.startswith(f"/{组名}") or 文本.startswith(组名)
+    text = (message or "").strip()
+    return text.startswith(f"/{group_name}") or text.startswith(group_name)
 
 
-def 取落空参数(消息: str, 组名: str) -> str:
+def leftover_arg(message: str, group_name: str) -> str:
     """取出组名后面的内容。
 
     组名可能带 `/` 前缀也可能不带——QQ 官方适配器有时会把 `message_str` 里的
@@ -73,14 +73,14 @@ def 取落空参数(消息: str, 组名: str) -> str:
     不以组名开头时返回空串，**不是原样返回**：调用方靠这一点判断「这条消息
     根本不归我管」。
     """
-    文本 = (消息 or "").strip()
-    for 前缀 in (f"/{组名}", 组名):
-        if 文本.startswith(前缀):
-            return 文本[len(前缀) :].strip()
+    text = (message or "").strip()
+    for prefix in (f"/{group_name}", group_name):
+        if text.startswith(prefix):
+            return text[len(prefix) :].strip()
     return ""
 
 
-def 是否落空(消息: str, 组名: str) -> bool:
+def is_command_miss(message: str, group_name: str) -> bool:
     """这条消息是不是「匹配了组名但没匹配任何子命令」。
 
     判据必须与 `CommandGroupFilter.startswith` 一致——**字面前缀匹配**，否则
@@ -89,31 +89,31 @@ def 是否落空(消息: str, 组名: str) -> bool:
     消息完全等于组名（`/爱瓦`）不算落空：`filter` 那时会抛错列出全部子
     指令，不归这里管，不然两组提示会叠着发。
     """
-    if not 以组名开头(消息, 组名):
+    if not starts_with_group(message, group_name):
         # 不是发给我的，放行。别碰别人的指令。
         return False
-    参数 = 取落空参数(消息, 组名)
-    if not 参数:
+    arg = leftover_arg(message, group_name)
+    if not arg:
         return False
-    return not any(参数.startswith(名) for 名 in 子命令名)
+    return not any(arg.startswith(name) for name in SUBCOMMANDS)
 
 
-def 是否空指令(消息: str, 组名: str) -> bool:
+def is_bare_command(message: str, group_name: str) -> bool:
     """只发了指令组名，一个参数都没带。
 
     `/爱瓦` 以前交给 AstrBot 处理，它回的是「参数不足」加全部子命令和各自的
     docstring——用户看到一大段内部说明，还得自己找能发什么。这里改成回帮助。
     """
-    return 以组名开头(消息, 组名) and not 取落空参数(消息, 组名)
+    return starts_with_group(message, group_name) and not leftover_arg(message, group_name)
 
 
-def 落空提示(参数: str) -> str:
+def miss_hint(arg: str) -> str:
     """没有子命令匹配时回什么。"""
-    干净 = (参数 or "").strip()
-    if not 干净:
+    cleaned = (arg or "").strip()
+    if not cleaned:
         return "没认出要做什么。全部指令发 /爱瓦 帮助。"
 
     # 参数短就原样带回去让用户看清自己发了什么，太长就截断——
     # 一整段东西回显出来没意义。
-    回显 = 干净 if len(干净) <= 40 else f"{干净[:40]}…"
-    return f"「{回显}」不是子命令。全部指令发 /爱瓦 帮助。"
+    echo = cleaned if len(cleaned) <= 40 else f"{cleaned[:40]}…"
+    return f"「{echo}」不是子命令。全部指令发 /爱瓦 帮助。"
