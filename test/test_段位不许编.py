@@ -146,7 +146,7 @@ class Test调用点已更新:
         if 单值:
             行号 = 单值[0][0]
             源码行 = 源码.splitlines()[行号 - 1]
-            assert "结果 = await fetch_matches(" in 源码行, (
+            assert "result = await fetch_matches(" in 源码行, (
                 f"main.py:{行号} 的 fetch_matches 只解包了 1 个值，角色（含段位）被丢掉了"
             )
 

@@ -142,7 +142,7 @@ class TestPollErrorClassification:
     def test_qr_and_ticket_have_fallbacks(self):
         """任何异常都要翻译成人话，不能冒到框架手上弹 traceback。"""
         main = (Path(__file__).resolve().parent.parent / "main.py").read_text(encoding="utf-8")
-        bind_block = main.split("async def 绑定")[1].split("@爱瓦.command")[0]
+        bind_block = main.split("async def bind")[1].split("@aiva_group.command")[0]
         # 出码、换票各一个宽泛兜底；轮询处是专门的 asyncio.TimeoutError
         assert bind_block.count("except Exception") >= 2, (
             f"出码 / 换票 两处都该有兜底，实际 {bind_block.count('except Exception')} 处"

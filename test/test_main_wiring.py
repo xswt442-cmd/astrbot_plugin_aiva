@@ -69,11 +69,11 @@ class Test组名:
             and isinstance(目标.targets[0], ast.Name)
             and isinstance(目标.value, ast.Constant)
         }
-        assert 常量.get("_组名") == "爱瓦"
+        assert 常量.get("_GROUP") == "爱瓦"
 
     def test_兜底过滤器用同一个组名(self):
         文本 = main源.read_text(encoding="utf-8")
-        assert "is_command_miss(text, _组名)" in 文本
+        assert "is_command_miss(text, _GROUP)" in 文本
 
     def test_兜底过滤器恒返回True(self):
         """`CustomFilter.filter` 返回 False 会让整个指令组被跳过。
@@ -100,7 +100,7 @@ class Test组名:
 
 def _帮助块() -> str:
     文本 = main源.read_text(encoding="utf-8")
-    起点 = 文本.index('_帮助文本 = """') + len('_帮助文本 = """')
+    起点 = 文本.index('_HELP_TEXT = """') + len('_HELP_TEXT = """')
     return 文本[起点 : 文本.index('"""', 起点)]
 
 
@@ -210,13 +210,13 @@ class Test凭据不外泄:
         # 换票时把 openid/access_token 传给 transport 是必需的，不算泄。
         # 泄的是把它写进 logger——日志会被到处收集、分发。
         for 参数 in _日志调用():
-            for 敏感 in ("access_token", "openid", "tid", "凭据["):
+            for 敏感 in ("access_token", "openid", "tid", "credential["):
                 assert 敏感 not in 参数, f"日志带上了凭据字段：{参数}"
 
     def test_日志里不会出现整个凭据对象(self):
         # 直接把 dict 丢进 f-string 会把四样全打印出来。
         for 参数 in _日志调用():
-            assert not any(f"{{{名}}}" in 参数 for 名 in ("凭据",))
+            assert not any(f"{{{名}}}" in 参数 for 名 in ("credential",))
 
 
 class Test源码卫生:
@@ -367,15 +367,15 @@ class Test审核合规:
     def test_数据目录用插件名(self):
         """规则是 `data/plugin_data/<plugin_name>`，`<plugin_name>` 指目录名。"""
         源码 = main源.read_text(encoding="utf-8")
-        assert "StarTools.get_data_dir(_插件名)" in 源码
-        assert '_插件名 = "astrbot_plugin_aiva"' in 源码
+        assert "StarTools.get_data_dir(_PLUGIN_NAME)" in 源码
+        assert '_PLUGIN_NAME = "astrbot_plugin_aiva"' in 源码
         assert '"plugin_data" / "aiva"' not in 源码
 
     def test_旧目录会被迁移(self):
         """升级不能把已有绑定丢掉。"""
         源码 = main源.read_text(encoding="utf-8")
-        assert "_迁移旧凭据(目录)" in 源码
-        assert '_旧数据目录名 = "aiva"' in 源码
+        assert "_migrate_legacy_credentials(data_dir)" in 源码
+        assert '_LEGACY_DATA_DIR = "aiva"' in 源码
 
     def test_不关_TLS_校验(self):
         """请求里带 openid/access_token/tid，关掉校验等于交给中间人。"""
@@ -411,4 +411,4 @@ class Test空指令给帮助:
         体 = 源[源.index("class _MissFallbackFilter") :]
         体 = 体[: 体.index("class Main(")]
         assert "is_bare_command(" in 体
-        assert "_帮助文本" in 体, "空指令要回帮助，不能只说「不是子命令」"
+        assert "_HELP_TEXT" in 体, "空指令要回帮助，不能只说「不是子命令」"

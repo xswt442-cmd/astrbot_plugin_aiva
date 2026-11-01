@@ -231,7 +231,7 @@ class TestMain已接上:
         树 = ast.parse(源码)
         节点 = None
         for n in ast.walk(树):
-            if isinstance(n, ast.AsyncFunctionDef) and n.name == "PK":
+            if isinstance(n, ast.AsyncFunctionDef) and n.name == "pk_cmd":
                 节点 = n
         片段 = ast.get_source_segment(源码, 节点) or ""
         assert "opponent_from_raw" in 片段

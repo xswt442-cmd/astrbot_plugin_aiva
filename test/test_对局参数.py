@@ -54,7 +54,7 @@ class TestMatchListNeedsScene:
         text = MAIN_SOURCE.read_text(encoding="utf-8")
         assert "传输.match_list(" not in text, "调用方必须用 fetch_matches()，它会自己取 scene"
         direct = text.count("await fetch_matches(")
-        tracked = text.count("_取对局记账(")
+        tracked = text.count("_fetch_tracked(")
         assert direct + tracked >= 5, "四个业务调用点都该走 fetch_matches/_取对局记账"
         assert direct == 1, "只有 _取对局记账 内部该裸调 fetch_matches，别处一律走记账版"
 

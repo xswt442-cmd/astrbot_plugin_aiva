@@ -106,7 +106,7 @@ class TestMain已接上:
         树 = ast.parse(源码)
         函数 = None
         for 节点 in ast.walk(树):
-            if isinstance(节点, ast.AsyncFunctionDef) and 节点.name == "PK":
+            if isinstance(节点, ast.AsyncFunctionDef) and 节点.name == "pk_cmd":
                 函数 = 节点
         assert 函数 is not None
         片段 = ast.get_source_segment(源码, 函数) or ""

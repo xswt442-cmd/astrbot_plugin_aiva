@@ -1,4 +1,4 @@
-"""`_名字` 必须是同步函数——它曾经是 async，调用点漏 await 后：
+"""`_display_name` 必须是同步函数——它曾经是 async，调用点漏 await 后：
 
 1. 拿到的是协程对象，**不是错误**；
 2. 协程对象是真值，`or "你"` 兜底不触发；
@@ -16,60 +16,59 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-仓库根 = Path(__file__).resolve().parent.parent
-主源码 = (仓库根 / "main.py").read_text(encoding="utf-8")
-树 = ast.parse(主源码)
+REPO_ROOT = Path(__file__).resolve().parent.parent
+MAIN_SOURCE = (REPO_ROOT / "main.py").read_text(encoding="utf-8")
+TREE = ast.parse(MAIN_SOURCE)
 
 
-def _函数(名: str):
-    for n in ast.walk(树):
-        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == 名:
+def _func(name: str):
+    for n in ast.walk(TREE):
+        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == name:
             return n
-    raise AssertionError(f"main.py 里找不到 {名}")
+    raise AssertionError(f"main.py 里找不到 {name}")
 
 
-class Test名字是同步的:
-    def test_不是协程函数(self):
-        节点 = _函数("_名字")
-        assert isinstance(节点, ast.FunctionDef), (
-            "_名字 必须是普通同步函数。它体内没有任何 await，做成协程只会"
+class TestDisplayNameIsSync:
+    def test_not_a_coroutine_function(self):
+        node = _func("_display_name")
+        assert isinstance(node, ast.FunctionDef), (
+            "_display_name 必须是普通同步函数。它体内没有任何 await，做成协程只会"
             "引来「调用点漏 await → 拿到协程对象 → 真值 → 塞进提示词」"
             "这条静默故障链。"
         )
 
-    def test_体内没有await(self):
+    def test_no_await_inside(self):
         """如果未来真加了 await（要 async 化），上面那条测试的注释就得改，
         调用点也全部要 await——这两件事必须一起做。"""
-        节点 = _函数("_名字")
-        assert not any(isinstance(n, ast.Await) for n in ast.walk(节点))
+        node = _func("_display_name")
+        assert not any(isinstance(n, ast.Await) for n in ast.walk(node))
 
-    def test_调用点没有裸调用(self):
-        """`self._名字(event)` 后面必须直接被 await，或本来就是同步调用。
+    def test_call_sites_do_not_await(self):
+        """`self._display_name(event)` 不许被 await。
 
-        这里按「_名字 是同步函数」的前提检查：调用结果不许再被 await
-        （await 一个非协程会 TypeError），也不许不做任何处理就进 f-string。
+        同步函数被 await 是运行时 TypeError；这里按 AST 找所有调用点，
+        看有没有哪一处把它当协程用。
         """
-        for n in ast.walk(树):
+        for n in ast.walk(TREE):
             if (
                 isinstance(n, ast.Call)
                 and isinstance(n.func, ast.Attribute)
-                and n.func.attr == "_名字"
+                and n.func.attr == "_display_name"
             ):
-                父 = None
-                # 找到直接外层：await 自Wrapped 则说明当协程用了
-                # （同步函数被 await 是运行时错误，直接禁掉）
-                for 外 in ast.walk(树):
-                    if isinstance(外, ast.Await) and 外.value is n:
-                        父 = 外
-                assert 父 is None, f"main.py 第 {n.lineno} 行 await 了同步函数 _名字，会 TypeError"
+                parent = None
+                for outer in ast.walk(TREE):
+                    if isinstance(outer, ast.Await) and outer.value is n:
+                        parent = outer
+                assert parent is None, (
+                    f"main.py 第 {n.lineno} 行 await 了同步函数 _display_name，会 TypeError"
+                )
 
 
-class Test提示词防线:
-    def test_名字兜底在PK里仍然存在(self):
+class TestPromptGuard:
+    def test_name_fallback_still_in_pk(self):
         """`or "你"` 这个兜底要留着，但它是防「平台没给名字」，
         不是防协程对象——协程对象的防线在上面那条测试里。"""
-        源码 = 主源码
-        assert 'or "你"' in 源码
+        assert 'or "你"' in MAIN_SOURCE
 
 
 if __name__ == "__main__":
