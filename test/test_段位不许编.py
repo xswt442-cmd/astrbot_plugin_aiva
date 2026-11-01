@@ -28,25 +28,25 @@ def _读(名: str) -> str:
 
 class Test段位取数:
     def test_取段位只认tier_text(self):
-        from aiva.transport import 取段位
+        from aiva.transport import tier_of
 
-        assert 取段位({"tier_text": "钻石II"}) == "钻石II"
-        assert 取段位({"tier_text": "  铂金I "}) == "铂金I"
+        assert tier_of({"tier_text": "钻石II"}) == "钻石II"
+        assert tier_of({"tier_text": "  铂金I "}) == "铂金I"
         # tier 是数字档位，没有映射表就不能用——猜错就是又一句编的段位
-        assert 取段位({"tier": 19}) == ""
-        assert 取段位({}) == ""
+        assert tier_of({"tier": 19}) == ""
+        assert tier_of({}) == ""
 
     def test_取对局要一起返回角色(self):
         源码 = _读("transport.py")
         树 = ast.parse(源码)
         函数 = None
         for 节点 in ast.walk(树):
-            if isinstance(节点, ast.AsyncFunctionDef) and 节点.name == "取对局":
+            if isinstance(节点, ast.AsyncFunctionDef) and 节点.name == "fetch_matches":
                 函数 = 节点
         assert 函数 is not None
         片段 = ast.get_source_segment(源码, 函数) or ""
-        assert "角色" in 片段, "取对局必须把主角色信息带出来，段位在里面"
-        assert "return (" in 片段, "取对局应返回 (对局列表, 角色) 二元组"
+        assert "role" in 片段, "fetch_matches 必须把主角色信息带出来，段位在里面"
+        assert "return (" in 片段, "fetch_matches 应返回 (对局列表, 角色) 二元组"
 
 
 class Test段位进文本:
@@ -111,7 +111,7 @@ class Test提示约束:
 
 class Test调用点已更新:
     def test_每个取对局调用都解包二元组(self):
-        """`取对局` 现在返回 `(列表, 角色)`。
+        """`fetch_matches` 现在返回 `(列表, 角色)`。
 
         只改成「拿列表」会让角色悄悄丢掉——段位又变回没数据，模型接着编。
         用 AST 查解包目标个数，比字符串匹配可靠。
@@ -129,7 +129,7 @@ class Test调用点已更新:
             if not (
                 isinstance(调用, ast.Call)
                 and isinstance(调用.func, ast.Name)
-                and 调用.func.id == "取对局"
+                and 调用.func.id == "fetch_matches"
             ):
                 continue
             目标 = 节点.targets if isinstance(节点, ast.Assign) else [节点.target]
@@ -137,17 +137,17 @@ class Test调用点已更新:
             个数 = len(元组.elts) if isinstance(元组, ast.Tuple) else 1
             找到.append((节点.lineno, 个数))
 
-        assert 找到, "main.py 里一个 取对局 调用都没找到，测试本身失效了"
+        assert 找到, "main.py 里一个 fetch_matches 调用都没找到，测试本身失效了"
 
         # 业务调用点必须同时拿角色（段位在里面）。唯一允许单值解包的地方是
-        # `_取对局记账`：它只是把 `取对局` 的返回值原样转出去，并在外面记成败。
+        # `_取对局记账`：它只是把 `fetch_matches` 的返回值原样转出去，并在外面记成败。
         单值 = [(行号, 个数) for 行号, 个数 in 找到 if 个数 != 2]
         assert len(单值) <= 1, f"这些调用点丢了角色（段位）：{单值}"
         if 单值:
             行号 = 单值[0][0]
             源码行 = 源码.splitlines()[行号 - 1]
-            assert "结果 = await 取对局(" in 源码行, (
-                f"main.py:{行号} 的 取对局 只解包了 1 个值，角色（含段位）被丢掉了"
+            assert "结果 = await fetch_matches(" in 源码行, (
+                f"main.py:{行号} 的 fetch_matches 只解包了 1 个值，角色（含段位）被丢掉了"
             )
 
 

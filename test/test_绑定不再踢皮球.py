@@ -62,8 +62,8 @@ class Test绑定还活着_必须真打接口:
 
     def test_登录过期和业务错误都算死了(self):
         体 = _函数体("_绑定还活着")
-        assert "登录过期" in 体
-        assert "业务错误" in 体
+        assert "LoginExpired" in 体
+        assert "ApiError" in 体
 
     def test_网络抖动按活着处理(self):
         """绑定指令只决定要不要挡人。抖动时宁可放行让人重扫，

@@ -54,12 +54,12 @@ from .aiva.storage import (
     stamp_bound_at,
 )
 from .aiva.transport import (
-    业务错误,
-    取对局,
-    取段位,
-    挂日志,
-    掌瓦传输,
-    登录过期,
+    ApiError,
+    LoginExpired,
+    MvalClient,
+    fetch_matches,
+    set_log_hook,
+    tier_of,
 )
 
 _组名 = "爱瓦"
@@ -255,7 +255,7 @@ class Main(Star):
         # transport 刻意不 import astrbot（本地 pytest 要能直接跑它），
         # 代价是拿不到框架 logger。这里把 logger 挂给它 ——
         # 「用户说没反应」这类问题唯一的出路就是日志。
-        挂日志(lambda 一句: logger.info(f"[aiva] {一句}"))
+        set_log_hook(lambda 一句: logger.info(f"[aiva] {一句}"))
         self._请求超时 = _配置整数(config, "request_timeout_seconds", 20)
         self._模型超时 = _配置整数(config, "model_timeout_seconds", int(_模型超时))
         self._允许PK = _配置开关(config, "pk_enabled", True)
@@ -374,10 +374,10 @@ class Main(Star):
                     f"[aiva] 第{问了几轮}轮未确认，腾讯返回 {getattr(会话, '最近原文', '')[:160]!r}"
                 )
 
-            传输 = 掌瓦传输(self._请求超时)
+            传输 = MvalClient(self._请求超时)
             try:
-                凭据 = await 传输.换票(结果.openid, 结果.access_token)
-            except 业务错误 as exc:
+                凭据 = await 传输.login_by_qq(结果.openid, 结果.access_token)
+            except ApiError as exc:
                 logger.warning(f"[aiva] 换票失败：{exc}")
                 yield event.plain_result(f"登录成功，换取凭证失败：{exc}")
                 return
@@ -456,10 +456,10 @@ class Main(Star):
                 yield event.plain_result("扫码超时，重新发 /爱瓦 绑定微信。")
                 return
 
-            传输 = 掌瓦传输(self._请求超时)
+            传输 = MvalClient(self._请求超时)
             try:
-                凭据 = await 传输.换票微信(授权码)
-            except 业务错误 as exc:
+                凭据 = await 传输.login_by_wechat(授权码)
+            except ApiError as exc:
                 logger.warning(f"[aiva] 微信换票失败：{exc}")
                 yield event.plain_result(f"微信登录成功，换取凭证失败：{exc}")
                 return
@@ -544,13 +544,13 @@ class Main(Star):
             yield event.plain_result(f"已绑定（{masked_id(凭据)}），{_登录过期提示}")
             return
 
-        传输 = 掌瓦传输(self._请求超时)
+        传输 = MvalClient(self._请求超时)
         try:
-            角色 = await 传输.取主角色(凭据)
-        except 登录过期:
+            角色 = await 传输.main_role(凭据)
+        except LoginExpired:
             yield event.plain_result(f"已绑定（{masked_id(凭据)}），{_登录过期提示}")
             return
-        except 业务错误 as exc:
+        except ApiError as exc:
             yield event.plain_result(f"接口取不到角色信息：{exc}")
             return
 
@@ -563,10 +563,10 @@ class Main(Star):
         战绩原因 = ""
         try:
             await self._取对局记账(用户, 凭据, 每页=1)
-        except 登录过期:
+        except LoginExpired:
             战绩可用 = False
             战绩原因 = "登录态已失效"
-        except 业务错误 as exc:
+        except ApiError as exc:
             战绩可用 = False
             战绩原因 = f"战绩接口报错：{exc}"
         except Exception as exc:  # noqa: BLE001
@@ -736,10 +736,10 @@ class Main(Star):
         # 时 `甲列表` 还没绑上，except 里再去读它只会 UnboundLocalError。
         try:
             甲列表, 甲角色 = await self._取对局记账(自己, 甲凭据)
-        except 登录过期:
+        except LoginExpired:
             yield event.plain_result(f"{甲名}的登录态失效，重新发 /爱瓦 绑定。")
             return
-        except 业务错误 as exc:
+        except ApiError as exc:
             yield event.plain_result(f"接口不给数据：{exc}")
             return
         except Exception as exc:
@@ -749,10 +749,10 @@ class Main(Star):
 
         try:
             乙列表, 乙角色 = await self._取对局记账(对手标识, 乙凭据)
-        except 登录过期:
+        except LoginExpired:
             yield event.plain_result(f"{乙名}的登录态失效，让他重发 /爱瓦 绑定。")
             return
-        except 业务错误 as exc:
+        except ApiError as exc:
             yield event.plain_result(f"接口不给数据：{exc}")
             return
         except Exception as exc:
@@ -779,8 +779,8 @@ class Main(Star):
                     乙名,
                     contrast_text(要点, 甲名, 乙名),
                     advantage_count(要点, 甲名, 乙名),
-                    recent_text(甲摘要, 取段位(甲角色)),
-                    recent_text(乙摘要, 取段位(乙角色)),
+                    recent_text(甲摘要, tier_of(甲角色)),
+                    recent_text(乙摘要, tier_of(乙角色)),
                 ),
             )
         except Exception as exc:
@@ -847,7 +847,7 @@ class Main(Star):
             return False
         try:
             await self._取对局记账(用户, 凭据, 每页=1)
-        except (登录过期, 业务错误):
+        except (LoginExpired, ApiError):
             return False
         except Exception:  # noqa: BLE001
             return True
@@ -863,8 +863,8 @@ class Main(Star):
         「绑定正常」，用户拿到的是一条随时会翻车的绿线。
         """
         try:
-            结果 = await 取对局(凭据, 每页=每页)
-        except 登录过期:
+            结果 = await fetch_matches(凭据, page_size=每页)
+        except LoginExpired:
             self._凭据.write(用户, mark_expired(凭据))
             raise
         if 凭据.get("最近失效"):
@@ -886,12 +886,12 @@ class Main(Star):
 
         try:
             原始列表, 角色 = await self._取对局记账(用户, 凭据)
-        except 登录过期 as exc:
+        except LoginExpired as exc:
             # 文案必须说清「怎么修」：光说「请重新绑定」不够——绑定指令
             # 以前会回「你已经绑定了，要换号先解绑」，用户被两面挡。
             # 现在绑定指令已允许覆盖重扫，这里就照实说「直接重扫」。
             raise 这句给用户(_登录过期提示) from exc
-        except 业务错误 as exc:
+        except ApiError as exc:
             raise 这句给用户(f"接口不给数据：{exc}") from exc
         except Exception as exc:
             logger.warning(f"[aiva] 取对局列表失败：{type(exc).__name__}: {exc}")
@@ -900,7 +900,7 @@ class Main(Star):
         摘要 = aggregate(原始列表)
         if not 摘要.get("场数"):
             raise 这句给用户("没有可统计的对局。")
-        return recent_text(摘要, 取段位(角色)), 摘要
+        return recent_text(摘要, tier_of(角色)), 摘要
 
     async def _问模型(self, event: AstrMessageEvent, 提示: str) -> str:
         """用当前会话的模型问一句话，返回它写的内容。

@@ -130,25 +130,25 @@ class Test换票请求体:
     """
 
     def test_四个字段都在(self):
-        from aiva.transport import 微信换票体
+        from aiva.transport import wechat_login_body
 
-        信息 = 微信换票体("CODE")["login_info"]
+        信息 = wechat_login_body("CODE")["login_info"]
         assert 信息["code"] == "CODE"
         assert 信息["appid"] == "wxcbb49f1f39656c2a"
         assert 信息["check_third_type"] == 1
         assert 信息["wx_info_type"] == 1
 
     def test_用微信渠道的_mcode(self):
-        from aiva.transport import 微信换票体
+        from aiva.transport import wechat_login_body
 
-        体 = 微信换票体("CODE")
+        体 = wechat_login_body("CODE")
         assert 体["mcode"] == "69028af6dca2c107f4f58290100011b1a303"
         assert 体["mcode"] != "132f0a77d34402abc8463d60100011d19b0e", "那是 QQ 渠道的"
 
     def test_带渠道与区服(self):
-        from aiva.transport import 微信换票体
+        from aiva.transport import wechat_login_body
 
-        体 = 微信换票体("CODE")
+        体 = wechat_login_body("CODE")
         assert 体["source_game_zone"] == "agame"
         assert 体["game_zone"] == "agame"
         assert 体["mappid"] == 10200

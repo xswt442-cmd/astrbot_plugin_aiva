@@ -8,12 +8,12 @@ access_token，跳转链 URL 里带 `keystr` / `ptsigx` / `code`，这些一旦�
 from __future__ import annotations
 
 from aiva.auth.ptlogin import 脱敏
-from aiva.transport import _体摘要
+from aiva.transport import _body_summary
 
 
-class Test请求体摘要:
-    def test_换票体不打值(self):
-        体 = {
+class TestBodySummary:
+    def test_ticket_body_hides_values(self):
+        body = {
             "login_info": {
                 "appid": "1001",
                 "openid": "OPENID_SECRET",
@@ -21,40 +21,40 @@ class Test请求体摘要:
                 "uin": 0,
             }
         }
-        摘要 = _体摘要(体)
+        summary = _body_summary(body)
 
-        assert "OPENID_SECRET" not in 摘要
-        assert "ACCESS_TOKEN_SECRET" not in 摘要
-        assert "login_info" in 摘要, "字段名要留着，不然排查分不清请求长什么样"
+        assert "OPENID_SECRET" not in summary
+        assert "ACCESS_TOKEN_SECRET" not in summary
+        assert "login_info" in summary, "字段名要留着，不然排查分不清请求长什么样"
 
-    def test_普通字段也不打值(self):
+    def test_plain_fields_hide_values_too(self):
         """只保留字段名是硬规则：白名单一漏就是一次泄漏。"""
-        摘要 = _体摘要({"mcode": "MCODE_SECRET", "page": 1})
+        summary = _body_summary({"mcode": "MCODE_SECRET", "page": 1})
 
-        assert "MCODE_SECRET" not in 摘要
-        assert "mcode" in 摘要
+        assert "MCODE_SECRET" not in summary
+        assert "mcode" in summary
 
 
-class Test轨迹脱敏:
-    def test_跳转链里的密钥被抹掉(self):
-        轨迹 = 脱敏(
+class TestTraceSanitize:
+    def test_keys_in_jump_chain_scrubbed(self):
+        trace = 脱敏(
             "https://ssl.ptlogin2.qq.com/check?uin=123&ptsigx=PTSIGX_SECRET&code=CODE_SECRET"
         )
 
-        assert "PTSIGX_SECRET" not in 轨迹
-        assert "CODE_SECRET" not in 轨迹
+        assert "PTSIGX_SECRET" not in trace
+        assert "CODE_SECRET" not in trace
 
-    def test_json_形态也抹(self):
-        脱敏后 = 脱敏('{"access_token": "TOKEN_SECRET", "openid": "OPENID_SECRET"}')
+    def test_json_form_scrubbed(self):
+        cleaned = 脱敏('{"access_token": "TOKEN_SECRET", "openid": "OPENID_SECRET"}')
 
-        assert "TOKEN_SECRET" not in 脱敏后
-        assert "OPENID_SECRET" not in 脱敏后
+        assert "TOKEN_SECRET" not in cleaned
+        assert "OPENID_SECRET" not in cleaned
 
-    def test_回调地址抹(self):
-        脱敏后 = 脱敏("auth://tauth.qq.com/?#access_token=TOKEN_SECRET&openid=OPENID_SECRET")
+    def test_callback_url_scrubbed(self):
+        cleaned = 脱敏("auth://tauth.qq.com/?#access_token=TOKEN_SECRET&openid=OPENID_SECRET")
 
-        assert "TOKEN_SECRET" not in 脱敏后
-        assert "OPENID_SECRET" not in 脱敏后
+        assert "TOKEN_SECRET" not in cleaned
+        assert "OPENID_SECRET" not in cleaned
 
-    def test_普通文本不动(self):
+    def test_plain_text_untouched(self):
         assert 脱敏("第2跳 302 无下一跳") == "第2跳 302 无下一跳"
