@@ -310,7 +310,7 @@ class Test导入齐全:
     @pytest.mark.parametrize(
         "名字",
         [
-            "扫码会话",
+            "QrSession",
             "build_match_setup",
             "setup_text",
             "find_opponent",

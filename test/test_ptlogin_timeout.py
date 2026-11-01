@@ -1,7 +1,7 @@
 """扫码链路的超时与网络异常不许穿透到 handler。
 
 线上事故：用户在扫码等待期间发了句别的消息，`aiohttp` 的 `sock_connect`
-被打断抛 `asyncio.TimeoutError`，它穿过 `_追跳转` → `轮询一次` → `绑定`，
+被打断抛 `asyncio.TimeoutError`，它穿过 `_follow_redirects` → `poll_once` → `绑定`，
 最后框架在群里弹出「在调用插件 astrbot_plugin_aiva 的处理函数 绑定 时出现
 异常」加一大段 traceback。用户只看到一句「在吗」把绑定搞挂了。
 
@@ -17,23 +17,23 @@ from pathlib import Path
 import aiohttp
 import pytest
 
-from aiva.auth.ptlogin import 扫码会话
+from aiva.auth.ptlogin import QrSession
 
-源码 = (Path(__file__).resolve().parent.parent / "aiva" / "auth" / "ptlogin.py").read_text(
+SOURCE = (Path(__file__).resolve().parent.parent / "aiva" / "auth" / "ptlogin.py").read_text(
     encoding="utf-8"
 )
 
 
-class _假响应:
+class FakeResponse:
     """够用的最小 aiohttp 响应替身。"""
 
-    def __init__(self, 正文: str = "", 头: dict[str, str] | None = None):
-        self._正文 = 正文
-        self.headers = 头 or {}
+    def __init__(self, body: str = "", headers: dict[str, str] | None = None):
+        self._body = body
+        self.headers = headers or {}
         self.status = 200
 
     async def text(self, errors: str = "strict") -> str:
-        return self._正文
+        return self._body
 
     async def __aenter__(self):
         return self
@@ -42,29 +42,29 @@ class _假响应:
         return False
 
 
-class _假会话:
+class FakeSession:
     """按 URL 决定抛什么或返回什么。"""
 
-    def __init__(self, 行为: dict[str, object]):
-        self._行为 = 行为
-        self.请求过: list[str] = []
+    def __init__(self, behavior: dict[str, object]):
+        self._behavior = behavior
+        self.requested: list[str] = []
 
     def get(self, url: str, **kwargs):
-        self.请求过.append(url)
-        结果 = self._行为.get(url, _假响应(""))
-        if isinstance(结果, BaseException):
-            raise 结果
-        if callable(结果):
-            return 结果(url, **kwargs)
-        return 结果
+        self.requested.append(url)
+        result = self._behavior.get(url, FakeResponse(""))
+        if isinstance(result, BaseException):
+            raise result
+        if callable(result):
+            return result(url, **kwargs)
+        return result
 
     async def close(self) -> None:
         return None
 
 
-class Test追跳转不穿透异常:
+class TestFollowRedirectsSwallowsErrors:
     @pytest.mark.parametrize(
-        "异常",
+        "error",
         [
             TimeoutError(),
             asyncio.TimeoutError(),
@@ -73,78 +73,78 @@ class Test追跳转不穿透异常:
             OSError("network unreachable"),
         ],
     )
-    async def test_单跳异常返回None而不是抛出(self, 异常):
+    async def test_single_hop_error_returns_none(self, error):
         """任何网络异常都按「这一跳没拿到」处理，返回 None 等下一轮。"""
-        会话 = 扫码会话()
-        会话._会话 = _假会话({"https://x.example/1": 异常})
+        session = QrSession()
+        session._session = FakeSession({"https://x.example/1": error})
 
-        结果 = await 会话._追跳转("https://x.example/1")
+        result = await session._follow_redirects("https://x.example/1")
 
-        assert 结果 is None, f"{type(异常).__name__} 穿透了 _追跳转"
+        assert result is None, f"{type(error).__name__} 穿透了 _follow_redirects"
 
-    async def test_首跳失败后不再继续(self):
+    async def test_stops_after_first_failure(self):
         """失败就停，别拿同一个坏连接连打 5 次。"""
-        会话 = 扫码会话()
-        假 = _假会话({"https://a": TimeoutError(), "https://b": _假响应("")})
-        会话._会话 = 假
+        session = QrSession()
+        fake = FakeSession({"https://a": TimeoutError(), "https://b": FakeResponse("")})
+        session._session = fake
 
-        assert await 会话._追跳转("https://a") is None
-        assert 假.请求过 == ["https://a"], f"不该继续请求：{假.请求过}"
+        assert await session._follow_redirects("https://a") is None
+        assert fake.requested == ["https://a"], f"不该继续请求：{fake.requested}"
 
-    async def test_响应读取时才异常也能吞掉(self):
+    async def test_error_while_reading_body_swallowed(self):
         """异常发生在 `async with` 内部（读正文时）同样不能穿透。"""
 
-        class _读炸的响应(_假响应):
+        class ExplodingResponse(FakeResponse):
             async def __aenter__(self):
                 return self
 
             async def text(self, errors: str = "strict") -> str:
                 raise asyncio.TimeoutError()
 
-        会话 = 扫码会话()
-        会话._会话 = _假会话({"https://x.example/1": _读炸的响应()})
+        session = QrSession()
+        session._session = FakeSession({"https://x.example/1": ExplodingResponse()})
 
-        assert await 会话._追跳转("https://x.example/1") is None
+        assert await session._follow_redirects("https://x.example/1") is None
 
-    async def test_会话为None时直接返回(self):
-        会话 = 扫码会话()
-        assert await 会话._追跳转("https://x.example/1") is None
+    async def test_none_session_returns_directly(self):
+        session = QrSession()
+        assert await session._follow_redirects("https://x.example/1") is None
 
 
-class Test跳转超时预算:
-    def test_每一跳都有独立超时(self):
+class TestRedirectTimeoutBudget:
+    def test_each_hop_has_own_timeout(self):
         """会话的 total=20 是单条请求预算，跳转链最多 5 跳，不单独设就是 100 秒。
 
         实测正是这里出的事：等100 秒期间用户发消息打断连接。
         """
-        assert "_跳转超时" in 源码
-        assert "timeout=aiohttp.ClientTimeout(total=_跳转超时)" in 源码
+        assert "REDIRECT_TIMEOUT" in SOURCE
+        assert "timeout=aiohttp.ClientTimeout(total=REDIRECT_TIMEOUT)" in SOURCE
 
-    def test_单跳超时给够用(self):
+    def test_hop_timeout_is_enough(self):
         """腾讯登录单跳实测约 3 秒，`m_get_redirect_url` 也在 12 秒内，
         5 秒太紧会把本来能成的跳转掐死。"""
-        from aiva.auth.ptlogin import _跳转超时
+        from aiva.auth.ptlogin import REDIRECT_TIMEOUT
 
-        assert _跳转超时 >= 10, f"单跳 {_跳转超时} 秒不够腾讯登录接口用"
+        assert REDIRECT_TIMEOUT >= 10, f"单跳 {REDIRECT_TIMEOUT} 秒不够腾讯登录接口用"
 
-    def test_捕获列表含超时(self):
-        assert "except (TimeoutError, aiohttp.ClientError, OSError)" in 源码, (
+    def test_catch_list_includes_timeout(self):
+        assert "except (TimeoutError, aiohttp.ClientError, OSError)" in SOURCE, (
             "网络异常必须被吃掉，不许穿透到 handler"
         )
 
 
-class Test轮询异常归类:
-    def test_绑定接住超时(self):
+class TestPollErrorClassification:
+    def test_bind_handles_timeout(self):
         """handler 里必须有 `except asyncio.TimeoutError`。"""
-        主 = (Path(__file__).resolve().parent.parent / "main.py").read_text(encoding="utf-8")
-        assert "except asyncio.TimeoutError:" in 主, "绑定没接住超时，会炸成插件异常"
+        main = (Path(__file__).resolve().parent.parent / "main.py").read_text(encoding="utf-8")
+        assert "except asyncio.TimeoutError:" in main, "绑定没接住超时，会炸成插件异常"
 
-    def test_出码与换票都有兜底(self):
+    def test_qr_and_ticket_have_fallbacks(self):
         """任何异常都要翻译成人话，不能冒到框架手上弹 traceback。"""
-        主 = (Path(__file__).resolve().parent.parent / "main.py").read_text(encoding="utf-8")
-        绑定块 = 主.split("async def 绑定")[1].split("@爱瓦.command")[0]
+        main = (Path(__file__).resolve().parent.parent / "main.py").read_text(encoding="utf-8")
+        bind_block = main.split("async def 绑定")[1].split("@爱瓦.command")[0]
         # 出码、换票各一个宽泛兜底；轮询处是专门的 asyncio.TimeoutError
-        assert 绑定块.count("except Exception") >= 2, (
-            f"出码 / 换票 两处都该有兜底，实际 {绑定块.count('except Exception')} 处"
+        assert bind_block.count("except Exception") >= 2, (
+            f"出码 / 换票 两处都该有兜底，实际 {bind_block.count('except Exception')} 处"
         )
-        assert "except asyncio.TimeoutError:" in 绑定块, "轮询处没接住超时"
+        assert "except asyncio.TimeoutError:" in bind_block, "轮询处没接住超时"

@@ -101,14 +101,14 @@ class Test区分不出码原因:
         assert '"过期" in str(exc)' in 绑定, "两种失败必须靠判断分叉，不能共用一句文案"
         assert "码已过期，重新发 /爱瓦 绑定。" in 绑定
 
-    def test_解析失败时把跳转轨迹打进日志(self):
+    def test_解析失败时把轨迹打进日志(self):
         """下一次能不能定位，全看轨迹有没有记全。"""
         绑定 = ast.get_source_segment(主源码, _绑定函数()) or ""
-        assert "跳转轨迹" in 绑定
+        assert "trace" in 绑定
 
     def test_每轮记腾讯原始返回(self):
         绑定 = ast.get_source_segment(主源码, _绑定函数()) or ""
-        assert "最近原文" in 绑定, "轮询要留原始返回，排查时能直接看清腾讯说了什么"
+        assert "last_raw" in 绑定, "轮询要留原始返回，排查时能直接看清腾讯说了什么"
 
     def test_日志记第几轮(self):
         绑定 = ast.get_source_segment(主源码, _绑定函数()) or ""
@@ -116,11 +116,11 @@ class Test区分不出码原因:
 
 
 class Testptlogin留原始响应:
-    def test_会话保存最近原文(self):
+    def test_会话保存原始响应(self):
         源码 = (Path(__file__).resolve().parent.parent / "aiva" / "auth" / "ptlogin.py").read_text(
             encoding="utf-8"
         )
-        assert "最近原文" in 源码
+        assert "last_raw" in 源码
 
     def test_代码0但没凭据时抛错而非静默返回none(self):
         """code=0 是腾讯说「扫了并确认了」。这时静默返回 None 会让

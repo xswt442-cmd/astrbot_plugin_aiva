@@ -27,7 +27,7 @@ from astrbot.core.star.filter.custom_filter import CustomFilter
 
 # 全部在模块顶层导入。插件加载时就把整个包摸清：少文件、依赖缺失都在启动
 # 阶段报错，而不是等用户发了指令才在懒加载里抛模块不存在。
-from .aiva.auth.ptlogin import 扫码会话, 脱敏
+from .aiva.auth.ptlogin import QrSession, redact
 from .aiva.auth.wechat_flow import WechatQrSession
 from .aiva.fallback import (
     is_bare_command,
@@ -298,10 +298,10 @@ class Main(Star):
             logger.info(f"[aiva] 用户 {用户} 已有绑定但已失效，允许直接覆盖重绑")
             yield event.plain_result(f"之前的绑定失效了（{masked_id(已有)}），重新扫码就行。")
 
-        会话 = 扫码会话()
+        会话 = QrSession()
         try:
             try:
-                二维码 = await 会话.出码()
+                二维码 = await 会话.create_qr()
             except RuntimeError as exc:
                 logger.warning(f"[aiva] 出码失败：{exc}")
                 yield event.plain_result(f"生成二维码失败（{exc}），稍后再试。")
@@ -346,13 +346,13 @@ class Main(Star):
                 问了几轮 += 1
                 下一拍 += _轮询节奏
                 try:
-                    结果 = await 会话.轮询一次()
+                    结果 = await 会话.poll_once()
                 except RuntimeError as exc:
                     logger.info(
                         f"[aiva] 第{问了几轮}轮登录收尾失败：{exc}"
-                        f"\n  腾讯原始返回={脱敏(getattr(会话, '最近原文', '')[:200])!r}"
+                        f"\n  腾讯原始返回={redact(getattr(会话, 'last_raw', '')[:200])!r}"
                         f"\n  跳转链轨迹=\n    "
-                        + "\n    ".join(getattr(会话, "跳转轨迹", []) or ["(没走成任何一跳)"])
+                        + "\n    ".join(getattr(会话, "trace", []) or ["(没走成任何一跳)"])
                     )
                     # 「码过期」和「解析失败」是两回事，用户看到的文案必须分开：
                     # 前者是我们问得太慢，后者是我们自己的解析 bug。
@@ -371,7 +371,7 @@ class Main(Star):
                     logger.info(f"[aiva] 第{问了几轮}轮拿到扫码结果")
                     break
                 logger.debug(
-                    f"[aiva] 第{问了几轮}轮未确认，腾讯返回 {getattr(会话, '最近原文', '')[:160]!r}"
+                    f"[aiva] 第{问了几轮}轮未确认，腾讯返回 {getattr(会话, 'last_raw', '')[:160]!r}"
                 )
 
             传输 = MvalClient(self._请求超时)
@@ -395,7 +395,7 @@ class Main(Star):
             logger.info(f"[aiva] 用户 {用户} 绑定成功")
             yield event.plain_result(self._落库并回话(event, 用户, 凭据))
         finally:
-            await 会话.关闭()
+            await 会话.close()
 
     @爱瓦.command("绑定微信")
     async def 绑定微信(self, event: AstrMessageEvent):

@@ -7,7 +7,7 @@ access_token，跳转链 URL 里带 `keystr` / `ptsigx` / `code`，这些一旦�
 
 from __future__ import annotations
 
-from aiva.auth.ptlogin import 脱敏
+from aiva.auth.ptlogin import redact
 from aiva.transport import _body_summary
 
 
@@ -37,7 +37,7 @@ class TestBodySummary:
 
 class TestTraceSanitize:
     def test_keys_in_jump_chain_scrubbed(self):
-        trace = 脱敏(
+        trace = redact(
             "https://ssl.ptlogin2.qq.com/check?uin=123&ptsigx=PTSIGX_SECRET&code=CODE_SECRET"
         )
 
@@ -45,16 +45,16 @@ class TestTraceSanitize:
         assert "CODE_SECRET" not in trace
 
     def test_json_form_scrubbed(self):
-        cleaned = 脱敏('{"access_token": "TOKEN_SECRET", "openid": "OPENID_SECRET"}')
+        cleaned = redact('{"access_token": "TOKEN_SECRET", "openid": "OPENID_SECRET"}')
 
         assert "TOKEN_SECRET" not in cleaned
         assert "OPENID_SECRET" not in cleaned
 
     def test_callback_url_scrubbed(self):
-        cleaned = 脱敏("auth://tauth.qq.com/?#access_token=TOKEN_SECRET&openid=OPENID_SECRET")
+        cleaned = redact("auth://tauth.qq.com/?#access_token=TOKEN_SECRET&openid=OPENID_SECRET")
 
         assert "TOKEN_SECRET" not in cleaned
         assert "OPENID_SECRET" not in cleaned
 
     def test_plain_text_untouched(self):
-        assert 脱敏("第2跳 302 无下一跳") == "第2跳 302 无下一跳"
+        assert redact("第2跳 302 无下一跳") == "第2跳 302 无下一跳"
