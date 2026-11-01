@@ -34,17 +34,17 @@ from .aiva.pk import 从原始载荷认对手, 从提及里找对手, 找对手,
 from .aiva.prompts import PK提示, 开局提示, 锐评提示
 from .aiva.stats import 占优项数, 对比文本, 对比要点, 聚合, 近况文本
 from .aiva.storage import (
-    净化昵称,
-    凭据仓库,
-    凭据摘要,
-    凭据是否齐全,
-    刚失效过,
-    已绑多久,
-    找同名的人,
-    清失效,
-    记失效,
-    记昵称,
-    记绑定时间,
+    CredentialStore,
+    clean_nickname,
+    clear_expired,
+    find_by_nickname,
+    is_complete,
+    mark_expired,
+    masked_id,
+    recently_expired,
+    seconds_since_bind,
+    set_nickname,
+    stamp_bound_at,
 )
 from .aiva.transport import (
     业务错误,
@@ -253,7 +253,7 @@ class Main(Star):
         self._请求超时 = _配置整数(config, "request_timeout_seconds", 20)
         self._模型超时 = _配置整数(config, "model_timeout_seconds", int(_模型超时))
         self._允许PK = _配置开关(config, "pk_enabled", True)
-        self._凭据 = 凭据仓库(self._数据目录())
+        self._凭据 = CredentialStore(self._数据目录())
 
     def _数据目录(self) -> Path:
         from astrbot.core.star.star_tools import StarTools
@@ -275,8 +275,8 @@ class Main(Star):
             yield event.plain_result("拿不到你的用户标识，无法绑定。")
             return
 
-        已有 = self._凭据.读取(用户)
-        if 已有 and 凭据是否齐全(已有):
+        已有 = self._凭据.read(用户)
+        if 已有 and is_complete(已有):
             # **别一上来就挡人。** 以前这里无条件回「你已经绑定了，要换号
             # 先解绑」，而战绩/锐评那边过期时又只会说「请重新绑定」——
             # 用户被两边打乒乓球：战绩让他绑定，绑定让他解绑，而没人告诉他
@@ -286,11 +286,11 @@ class Main(Star):
             还活着 = await self._绑定还活着(用户, 已有)
             if 还活着:
                 yield event.plain_result(
-                    f"已经绑定了账号（{凭据摘要(已有)}），换号先发 /爱瓦 解绑。"
+                    f"已经绑定了账号（{masked_id(已有)}），换号先发 /爱瓦 解绑。"
                 )
                 return
             logger.info(f"[aiva] 用户 {用户} 已有绑定但已失效，允许直接覆盖重绑")
-            yield event.plain_result(f"之前的绑定失效了（{凭据摘要(已有)}），重新扫码就行。")
+            yield event.plain_result(f"之前的绑定失效了（{masked_id(已有)}），重新扫码就行。")
 
         会话 = 扫码会话()
         try:
@@ -380,7 +380,7 @@ class Main(Star):
                 yield event.plain_result("换取凭证时网络出错，请重试。")
                 return
 
-            if not 凭据是否齐全(凭据):
+            if not is_complete(凭据):
                 yield event.plain_result("拿不到完整凭证，请重试。")
                 return
 
@@ -403,16 +403,16 @@ class Main(Star):
             yield event.plain_result("拿不到你的用户标识，无法绑定。")
             return
 
-        已有 = self._凭据.读取(用户)
-        if 已有 and 凭据是否齐全(已有):
+        已有 = self._凭据.read(用户)
+        if 已有 and is_complete(已有):
             还活着 = await self._绑定还活着(用户, 已有)
             if 还活着:
                 yield event.plain_result(
-                    f"已经绑定了账号（{凭据摘要(已有)}），换号先发 /爱瓦 解绑。"
+                    f"已经绑定了账号（{masked_id(已有)}），换号先发 /爱瓦 解绑。"
                 )
                 return
             logger.info(f"[aiva] 用户 {用户} 已有绑定但已失效，允许直接覆盖重绑")
-            yield event.plain_result(f"之前的绑定失效了（{凭据摘要(已有)}），重新扫码就行。")
+            yield event.plain_result(f"之前的绑定失效了（{masked_id(已有)}），重新扫码就行。")
 
         会话 = 微信出码会话()
         try:
@@ -462,7 +462,7 @@ class Main(Star):
                 yield event.plain_result("换取凭证时网络出错，请重试。")
                 return
 
-            if not 凭据是否齐全(凭据):
+            if not is_complete(凭据):
                 logger.warning(f"[aiva] 微信换票返回的凭据不完整：{sorted(凭据)}")
                 yield event.plain_result("拿不到完整凭证，请重试。")
                 return
@@ -476,7 +476,7 @@ class Main(Star):
     async def 解绑(self, event: AstrMessageEvent):
         """解除绑定并删除本地凭据。"""
         用户 = event.get_sender_id()
-        if not self._凭据.删除(用户):
+        if not self._凭据.delete(用户):
             yield event.plain_result("还没绑定。")
             return
         logger.info(f"[aiva] 用户 {用户} 解绑")
@@ -491,15 +491,15 @@ class Main(Star):
         逼人重扫一次码**——重绑要走完整套扫码流程，比改个名字重得多。
         """
         用户 = event.get_sender_id()
-        凭据 = self._凭据.读取(用户)
-        if not 凭据 or not 凭据是否齐全(凭据):
+        凭据 = self._凭据.read(用户)
+        if not 凭据 or not is_complete(凭据):
             yield event.plain_result("还没绑定，先发 /爱瓦 绑定。")
             return
 
         # 先洗掉换行与零宽字符：昵称会被拼进 PK 提示词，带换行等于多一行指令。
-        新名 = 净化昵称(名字)
+        新名 = clean_nickname(名字)
         if not 新名:
-            当前 = 净化昵称(凭据.get("昵称") or "")
+            当前 = clean_nickname(凭据.get("昵称") or "")
             yield event.plain_result(f"当前 PK 名字：「{当前 or '（还没设）'}」。")
             return
 
@@ -509,9 +509,9 @@ class Main(Star):
             return
 
         # 重名别人第一反应是「我是不是被占了」，所以顺手告诉他有几个人同名。
-        撞名 = [名 for _, 名 in 找同名的人(self._凭据, 新名, 自己=用户)]
+        撞名 = [名 for _, 名 in find_by_nickname(self._凭据, 新名, me=用户)]
 
-        self._凭据.写入(用户, 记昵称(凭据, 新名))
+        self._凭据.write(用户, set_nickname(凭据, 新名))
         logger.info(f"[aiva] 用户 {用户} 昵称改为 {新名!r}")
         if 撞名:
             yield event.plain_result(
@@ -524,25 +524,25 @@ class Main(Star):
     async def 状态(self, event: AstrMessageEvent):
         """看当前绑定是否正常。"""
         用户 = event.get_sender_id()
-        凭据 = self._凭据.读取(用户)
+        凭据 = self._凭据.read(用户)
         if not 凭据:
             yield event.plain_result("还没绑定，先发 /爱瓦 绑定。")
             return
-        if not 凭据是否齐全(凭据):
-            yield event.plain_result(f"本地记录不完整（{凭据摘要(凭据)}），重新发 /爱瓦 绑定。")
+        if not is_complete(凭据):
+            yield event.plain_result(f"本地记录不完整（{masked_id(凭据)}），重新发 /爱瓦 绑定。")
             return
 
         # 刚失效过就别急着报好消息：这时候打接口十有八九能撞上一个「好窗口」，
         # 用户看到「绑定正常」转头又被打脸。
-        if 刚失效过(凭据):
-            yield event.plain_result(f"已绑定（{凭据摘要(凭据)}），{_登录过期提示}")
+        if recently_expired(凭据):
+            yield event.plain_result(f"已绑定（{masked_id(凭据)}），{_登录过期提示}")
             return
 
         传输 = 掌瓦传输(self._请求超时)
         try:
             角色 = await 传输.取主角色(凭据)
         except 登录过期:
-            yield event.plain_result(f"已绑定（{凭据摘要(凭据)}），{_登录过期提示}")
+            yield event.plain_result(f"已绑定（{masked_id(凭据)}），{_登录过期提示}")
             return
         except 业务错误 as exc:
             yield event.plain_result(f"接口取不到角色信息：{exc}")
@@ -569,15 +569,15 @@ class Main(Star):
 
         if not 战绩可用:
             logger.warning(f"[aiva] 用户 {用户} 状态自查失败：{战绩原因}")
-            yield event.plain_result(f"绑定还在（{凭据摘要(凭据)}），但战绩取不到：{战绩原因}")
+            yield event.plain_result(f"绑定还在（{masked_id(凭据)}），但战绩取不到：{战绩原因}")
             return
 
         名字 = str(角色.get("nickname") or 角色.get("name") or "").strip()
-        行 = f"绑定正常（{凭据摘要(凭据)}）"
+        行 = f"绑定正常（{masked_id(凭据)}）"
         if 名字:
-            行 = f"绑定正常：{名字}（{凭据摘要(凭据)}）"
+            行 = f"绑定正常：{名字}（{masked_id(凭据)}）"
 
-        多久 = 已绑多久(凭据)
+        多久 = seconds_since_bind(凭据)
         if 多久 is not None:
             小时 = 多久 / 3600
             行 += f"\n已绑定 {小时:.1f} 小时"
@@ -634,10 +634,10 @@ class Main(Star):
     async def 开一局(self, event: AstrMessageEvent):
         """随机生成一局竞技模式，让模型推演过程与结果。"""
         用户 = event.get_sender_id()
-        凭据 = self._凭据.读取(用户)
+        凭据 = self._凭据.read(用户)
         摘要: dict[str, Any] | None = None
 
-        if 凭据 and 凭据是否齐全(凭据):
+        if 凭据 and is_complete(凭据):
             try:
                 原始的对局, _角色 = await self._取对局记账(用户, 凭据)
                 摘要 = 聚合(原始的对局)
@@ -665,8 +665,8 @@ class Main(Star):
             return
 
         自己 = event.get_sender_id()
-        甲凭据 = self._凭据.读取(自己)
-        if not 甲凭据 or not 凭据是否齐全(甲凭据):
+        甲凭据 = self._凭据.read(自己)
+        if not 甲凭据 or not is_complete(甲凭据):
             yield event.plain_result("还没绑定，先发 /爱瓦 绑定。")
             return
 
@@ -691,7 +691,7 @@ class Main(Star):
             来源 = "组件链/正文"
         if not 对手标识:
             关键词 = _PK里的名字(正文)
-            候选 = 找同名的人(self._凭据, 关键词, 自己=自己) if 关键词 else []
+            候选 = find_by_nickname(self._凭据, 关键词, me=自己) if 关键词 else []
             if len(候选) == 1:
                 对手标识, 对手昵称 = 候选[0]
                 来源 = "昵称"
@@ -715,14 +715,14 @@ class Main(Star):
             yield event.plain_result("没认出要和谁比，写对方的名字：/爱瓦 PK <名字>。")
             return
 
-        乙凭据 = self._凭据.读取(对手标识)
-        if not 乙凭据 or not 凭据是否齐全(乙凭据):
+        乙凭据 = self._凭据.read(对手标识)
+        if not 乙凭据 or not is_complete(乙凭据):
             yield event.plain_result("对方还没绑定，比不了。")
             return
 
         # 念名字优先用各人自己设的 PK 名字，那是群里点人时用的称呼。
         甲名 = self._对战名(甲凭据, self._名字(event), "你")
-        乙名 = self._对战名(乙凭据, 对手昵称, f"对手{凭据摘要(乙凭据)}")
+        乙名 = self._对战名(乙凭据, 对手昵称, f"对手{masked_id(乙凭据)}")
 
         # 两边分开取，失败时要说清是谁的登录态挂了——只挂一边却让两个人
         # 都去重扫，一半的人白扫一次。合成一个 try 是做不到的：第一句抛异常
@@ -795,7 +795,7 @@ class Main(Star):
         同步函数漏写 await 的地方根本调不出结果，TypeError 当场就炸。
         """
         try:
-            名字 = 净化昵称(event.get_sender_name() or "")
+            名字 = clean_nickname(event.get_sender_name() or "")
         except Exception:
             return ""
         return 名字[:_昵称上限]
@@ -808,7 +808,7 @@ class Main(Star):
         而平台给的显示名在 QQ 官方上是 QQ 昵称而不是群昵称，常常点不到人。
         """
         # 老记录可能是净化之前存进去的，念之前再洗一次。
-        return 净化昵称(凭据.get("昵称") or "") or 净化昵称(平台显示名) or 兜底
+        return clean_nickname(凭据.get("昵称") or "") or clean_nickname(平台显示名) or 兜底
 
     def _落库并回话(self, event: AstrMessageEvent, 用户: str, 凭据: dict[str, Any]) -> str:
         """存下凭据，返回给用户看的那句话。QQ 与微信两条绑定路径共用。
@@ -816,10 +816,10 @@ class Main(Star):
         昵称是 PK 认人的唯一兜底（QQ 官方收不到 @别人），每次绑定都刷新一次，
         用户改了群昵称也能跟上。
         """
-        self._凭据.写入(用户, 记昵称(记绑定时间(凭据), self._名字(event)))
+        self._凭据.write(用户, set_nickname(stamp_bound_at(凭据), self._名字(event)))
         名字 = str(凭据.get("昵称") or "").strip()
         return (
-            f"绑定成功（{凭据摘要(凭据)}）。\n"
+            f"绑定成功（{masked_id(凭据)}）。\n"
             f"PK 名字是「{名字 or '（没取到）'}」，要改发 /爱瓦 昵称。"
         )
 
@@ -833,9 +833,9 @@ class Main(Star):
         网络抖动拿不到时按「活着」处理：绑定指令只是决定要不要挡人，
         宁可放行让人重扫，也别因为一次抖动把人卡在「你得先解绑」上。
         """
-        if not 凭据是否齐全(凭据):
+        if not is_complete(凭据):
             return False
-        if 刚失效过(凭据):
+        if recently_expired(凭据):
             # 刚失败过就别拦着重绑——用户要的是直接重扫，不是先解绑。
             return False
         try:
@@ -858,10 +858,10 @@ class Main(Star):
         try:
             结果 = await 取对局(凭据, 每页=每页)
         except 登录过期:
-            self._凭据.写入(用户, 记失效(凭据))
+            self._凭据.write(用户, mark_expired(凭据))
             raise
         if 凭据.get("最近失效"):
-            self._凭据.写入(用户, 清失效(凭据))
+            self._凭据.write(用户, clear_expired(凭据))
         return 结果
 
     async def _取近期战绩(self, 用户: str) -> tuple[str, dict[str, Any]]:
@@ -873,8 +873,8 @@ class Main(Star):
         真正的加载阶段才报错，本地测试看不到。所以这里一律抛，
         调用方负责把话发出去。
         """
-        凭据 = self._凭据.读取(用户)
-        if not 凭据 or not 凭据是否齐全(凭据):
+        凭据 = self._凭据.read(用户)
+        if not 凭据 or not is_complete(凭据):
             raise 这句给用户("还没绑定，先发 /爱瓦 绑定。")
 
         try:

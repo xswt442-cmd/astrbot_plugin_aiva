@@ -13,7 +13,7 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-from aiva.storage import 净化昵称
+from aiva.storage import clean_nickname
 
 仓库根 = Path(__file__).resolve().parent.parent
 主源码 = (仓库根 / "main.py").read_text(encoding="utf-8")
@@ -63,17 +63,17 @@ class Test改名字行为:
 
     def test_改名字不要求重新绑定(self):
         体 = _函数体("昵称")
-        assert "记昵称(" in 体, "直接改凭据里的昵称，不要走绑定流程"
+        assert "set_nickname(" in 体, "直接改凭据里的昵称，不要走绑定流程"
 
     def test_撞名要提醒(self):
         """别人第一反应是「我是不是被占了」。顺手告诉他有几个人同名。"""
         体 = _函数体("昵称")
-        assert "找同名的人(" in 体
+        assert "find_by_nickname(" in 体
         assert "个人叫这个" in 体
 
     def test_没绑定时挡住(self):
         体 = _函数体("昵称")
-        assert "凭据是否齐全" in 体
+        assert "is_complete(" in 体
 
 
 class Test帮助文本提到:
@@ -96,14 +96,14 @@ class Test净化昵称:
     """昵称会拼进 PK 提示词：换行能伪造指令，零宽字符能让两个名字看着一样。"""
 
     def test_换行与制表符被去掉(self):
-        assert 净化昵称("老\n王\t") == "老王"
+        assert clean_nickname("老\n王\t") == "老王"
 
     def test_零宽字符被去掉(self):
-        assert 净化昵称("老\u200b王") == "老王"
+        assert clean_nickname("老\u200b王") == "老王"
 
     def test_首尾空白被压掉(self):
-        assert 净化昵称("  老王  ") == "老王"
+        assert clean_nickname("  老王  ") == "老王"
 
     def test_空值不抛(self):
-        assert 净化昵称("") == ""
-        assert 净化昵称(None) == ""
+        assert clean_nickname("") == ""
+        assert clean_nickname(None) == ""

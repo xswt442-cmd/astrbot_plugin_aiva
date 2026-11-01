@@ -8,41 +8,41 @@
 
 from __future__ import annotations
 
-from aiva.storage import 刚失效过, 清失效, 记失效
+from aiva.storage import clear_expired, mark_expired, recently_expired
 
 现在 = 1_792_256_000
 
 
 class Test记失效:
     def test_记下时间里立刻算失效(self):
-        凭据 = 记失效({}, 现在)
+        凭据 = mark_expired({}, 现在)
 
         assert 凭据["最近失效"] == 现在
-        assert 刚失效过(凭据, 现在)
+        assert recently_expired(凭据, 现在)
 
     def test_半小时内一直算失效(self):
-        凭据 = 记失效({}, 现在)
+        凭据 = mark_expired({}, 现在)
 
-        assert 刚失效过(凭据, 现在 + 29 * 60)
-        assert not 刚失效过(凭据, 现在 + 31 * 60)
+        assert recently_expired(凭据, 现在 + 29 * 60)
+        assert not recently_expired(凭据, 现在 + 31 * 60)
 
     def test_清掉之后算好(self):
-        凭据 = 清失效(记失效({}, 现在))
+        凭据 = clear_expired(mark_expired({}, 现在))
 
         assert "最近失效" not in 凭据
-        assert not 刚失效过(凭据, 现在)
+        assert not recently_expired(凭据, 现在)
 
     def test_没记录算好(self):
-        assert not 刚失效过({}, 现在)
-        assert not 刚失效过(None, 现在)
+        assert not recently_expired({}, 现在)
+        assert not recently_expired(None, 现在)
 
     def test_脏数据不抛(self):
-        assert not 刚失效过({"最近失效": "昨天"}, 现在)
-        assert not 刚失效过({"最近失效": None}, 现在)
-        assert not 刚失效过({"最近失效": -5}, 现在)
+        assert not recently_expired({"最近失效": "昨天"}, 现在)
+        assert not recently_expired({"最近失效": None}, 现在)
+        assert not recently_expired({"最近失效": -5}, 现在)
 
     def test_时间倒退不算失效(self):
         """系统时钟回拨时会算出负数，别把它当成刚失效。"""
-        凭据 = 记失效({}, 现在)
+        凭据 = mark_expired({}, 现在)
 
-        assert not 刚失效过(凭据, 现在 - 3600)
+        assert not recently_expired(凭据, 现在 - 3600)

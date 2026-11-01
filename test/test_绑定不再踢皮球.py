@@ -74,7 +74,7 @@ class Test绑定还活着_必须真打接口:
 
     def test_不齐全直接算死(self):
         体 = _函数体("_绑定还活着")
-        assert "凭据是否齐全" in 体
+        assert "is_complete(" in 体
 
 
 class Test过期文案要给出动作:

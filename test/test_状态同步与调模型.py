@@ -67,7 +67,7 @@ class Test状态自查:
     def test_状态先看失效记录(self):
         """刚失效过就别打接口碰运气，那会给出一个随时翻车的「绑定正常」。"""
         体 = _函数体内("状态")
-        assert "刚失效过(" in 体
+        assert "recently_expired(" in 体
 
     def test_状态不能只报绑定正常(self):
         体 = _函数体内("状态")
@@ -76,7 +76,7 @@ class Test状态自查:
 
     def test_状态要报绑定时长(self):
         体 = _函数体内("状态")
-        assert "已绑多久(" in 体, "状态应显示已绑定多久"
+        assert "seconds_since_bind(" in 体, "状态应显示已绑定多久"
 
 
 class Test调模型:
@@ -126,28 +126,28 @@ class Test绑定时间戳:
     def test_绑定时要盖时间戳(self):
         """两条绑定路径都走 `_落库并回话`，时间戳盖在那里。"""
         体 = _函数体内("_落库并回话")
-        assert "记绑定时间(" in 体
+        assert "stamp_bound_at(" in 体
 
     def test_两条绑定路径都落库(self):
         源码 = (Path(__file__).resolve().parent.parent / "main.py").read_text(encoding="utf-8")
         assert 源码.count("_落库并回话(") >= 3, "绑定与绑定微信都要落库"
 
     def test_旧数据没有时间戳也要能读(self):
-        from aiva.storage import 已绑多久, 记绑定时间
+        from aiva.storage import seconds_since_bind, stamp_bound_at
 
-        assert 已绑多久({"openid": "x"}) is None
-        带戳 = 记绑定时间({"openid": "x"})
-        多大 = 已绑多久(带戳)
+        assert seconds_since_bind({"openid": "x"}) is None
+        带戳 = stamp_bound_at({"openid": "x"})
+        多大 = seconds_since_bind(带戳)
         assert 多大 is not None and 0 <= 多大 < 5
 
     def test_提醒阈值(self):
         import time
 
-        from aiva.storage import 记绑定时间, 该提醒重绑
+        from aiva.storage import should_rebind, stamp_bound_at
 
-        assert not 该提醒重绑(记绑定时间({}))
+        assert not should_rebind(stamp_bound_at({}))
         老 = {"绑定于": int(time.time()) - 13 * 3600}
-        assert 该提醒重绑(老)
+        assert should_rebind(老)
 
 
 if __name__ == "__main__":

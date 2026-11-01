@@ -25,7 +25,7 @@ import json
 from pathlib import Path
 
 from aiva.pk import 从原始载荷认对手, 从提及里找对手, 提及摘要
-from aiva.storage import 凭据仓库, 找同名的人, 记昵称
+from aiva.storage import CredentialStore, find_by_nickname, set_nickname
 
 仓库根 = Path(__file__).resolve().parent.parent
 
@@ -110,45 +110,45 @@ class Test提及回退:
 
 class Test昵称兜底:
     def _仓库(self, tmp_path):
-        仓 = 凭据仓库(tmp_path)
-        仓.写入("用户A", 记昵称({"userId": "1"}, "ZnNe"))
-        仓.写入("用户B", 记昵称({"userId": "2"}, "YJJ"))
+        仓 = CredentialStore(tmp_path)
+        仓.write("用户A", set_nickname({"userId": "1"}, "ZnNe"))
+        仓.write("用户B", set_nickname({"userId": "2"}, "YJJ"))
         return 仓
 
     def test_按昵称找到(self, tmp_path):
         仓 = self._仓库(tmp_path)
-        assert 找同名的人(仓, "YJJ") == [("用户B", "YJJ")]
+        assert find_by_nickname(仓, "YJJ") == [("用户B", "YJJ")]
 
     def test_忽略大小写(self, tmp_path):
         仓 = self._仓库(tmp_path)
-        assert [n for _, n in 找同名的人(仓, "znne")] == ["ZnNe"]
-        assert [n for _, n in 找同名的人(仓, "yjj")] == ["YJJ"]
+        assert [n for _, n in find_by_nickname(仓, "znne")] == ["ZnNe"]
+        assert [n for _, n in find_by_nickname(仓, "yjj")] == ["YJJ"]
 
     def test_忽略空格(self, tmp_path):
-        仓 = 凭据仓库(tmp_path)
-        仓.写入("用户C", 记昵称({"userId": "3"}, "老 狗"))
-        assert [n for _, n in 找同名的人(仓, "老狗")] == ["老 狗"]
+        仓 = CredentialStore(tmp_path)
+        仓.write("用户C", set_nickname({"userId": "3"}, "老 狗"))
+        assert [n for _, n in find_by_nickname(仓, "老狗")] == ["老 狗"]
 
     def test_排掉自己(self, tmp_path):
         仓 = self._仓库(tmp_path)
-        assert 找同名的人(仓, "ZnNe", 自己="用户A") == []
+        assert find_by_nickname(仓, "ZnNe", me="用户A") == []
 
     def test_重名返回全部(self, tmp_path):
         """挑错人等于拿错人的战绩，所以不能只返回第一个。"""
-        仓 = 凭据仓库(tmp_path)
-        仓.写入("用户D", 记昵称({"userId": "4"}, "小明"))
-        仓.写入("用户E", 记昵称({"userId": "5"}, "小明"))
-        assert len(找同名的人(仓, "小明")) == 2
+        仓 = CredentialStore(tmp_path)
+        仓.write("用户D", set_nickname({"userId": "4"}, "小明"))
+        仓.write("用户E", set_nickname({"userId": "5"}, "小明"))
+        assert len(find_by_nickname(仓, "小明")) == 2
 
     def test_没昵称的跳过(self, tmp_path):
-        仓 = 凭据仓库(tmp_path)
-        仓.写入("用户F", {"userId": "6"})
-        assert 找同名的人(仓, "任何人") == []
+        仓 = CredentialStore(tmp_path)
+        仓.write("用户F", {"userId": "6"})
+        assert find_by_nickname(仓, "任何人") == []
 
     def test_空关键词不炸(self, tmp_path):
         仓 = self._仓库(tmp_path)
-        assert 找同名的人(仓, "") == []
-        assert 找同名的人(仓, "  ") == []
+        assert find_by_nickname(仓, "") == []
+        assert find_by_nickname(仓, "  ") == []
 
     def test_精确优先于模糊(self, tmp_path):
         """只做子串的话，「小明」会同时撞上「小明同学」。
@@ -157,27 +157,27 @@ class Test昵称兜底:
         却被告知「匹配到几个人」——白问一句。所以精确命中优先。
         爱完美（aiwm）的 `storage.按昵称找` 就是这个顺序，这里照抄。
         """
-        仓 = 凭据仓库(tmp_path)
-        仓.写入("用户D", 记昵称({"userId": "4"}, "小明"))
-        仓.写入("用户E", 记昵称({"userId": "5"}, "小明同学"))
-        assert 找同名的人(仓, "小明") == [("用户D", "小明")]
+        仓 = CredentialStore(tmp_path)
+        仓.write("用户D", set_nickname({"userId": "4"}, "小明"))
+        仓.write("用户E", set_nickname({"userId": "5"}, "小明同学"))
+        assert find_by_nickname(仓, "小明") == [("用户D", "小明")]
 
     def test_精确为空才用模糊(self, tmp_path):
-        仓 = 凭据仓库(tmp_path)
-        仓.写入("用户E", 记昵称({"userId": "5"}, "小明同学"))
-        assert 找同名的人(仓, "小明") == [("用户E", "小明同学")]
+        仓 = CredentialStore(tmp_path)
+        仓.write("用户E", set_nickname({"userId": "5"}, "小明同学"))
+        assert find_by_nickname(仓, "小明") == [("用户E", "小明同学")]
 
     def test_精确忽略大小写与空格(self, tmp_path):
-        仓 = 凭据仓库(tmp_path)
-        仓.写入("用户F", 记昵称({"userId": "6"}, "老 狗"))
-        assert 找同名的人(仓, "老狗") == [("用户F", "老 狗")]
+        仓 = CredentialStore(tmp_path)
+        仓.write("用户F", set_nickname({"userId": "6"}, "老 狗"))
+        assert find_by_nickname(仓, "老狗") == [("用户F", "老 狗")]
 
     def test_真重名时精确也返回两个(self, tmp_path):
         """真有两个一模一样的名字，还是得让用户选。"""
-        仓 = 凭据仓库(tmp_path)
-        仓.写入("用户G", 记昵称({"userId": "7"}, "小明"))
-        仓.写入("用户H", 记昵称({"userId": "8"}, "小明"))
-        assert len(找同名的人(仓, "小明")) == 2
+        仓 = CredentialStore(tmp_path)
+        仓.write("用户G", set_nickname({"userId": "7"}, "小明"))
+        仓.write("用户H", set_nickname({"userId": "8"}, "小明"))
+        assert len(find_by_nickname(仓, "小明")) == 2
 
 
 class TestPK里的名字:
@@ -236,10 +236,12 @@ class TestMain已接上:
         片段 = ast.get_source_segment(源码, 节点) or ""
         assert "从原始载荷认对手" in 片段
         assert "从提及里找对手" in 片段
-        assert "找同名的人" in 片段, "必须有昵称兜底，@ 拿不到是既成事实"
+        assert "find_by_nickname" in 片段, "必须有昵称兜底，@ 拿不到是既成事实"
         # 顺序：原始载荷 → mentions → 组件链/正文 → 昵称
         assert (
-            片段.index("从原始载荷认对手") < 片段.index("从提及里找对手") < 片段.index("找同名的人")
+            片段.index("从原始载荷认对手")
+            < 片段.index("从提及里找对手")
+            < 片段.index("find_by_nickname")
         )
 
     def test_main里的名字都存在(self):
@@ -303,20 +305,20 @@ class TestMain已接上:
             "但没同步）：" + ", ".join(f"第{行}行 {名}" for 行, 名 in 缺)
         )
 
-    def test_绑定时记昵称(self):
+    def test_绑定时set_nickname(self):
         源码 = (仓库根 / "main.py").read_text(encoding="utf-8")
-        assert "记昵称(" in 源码, "绑定时必须记昵称，否则 PK 无从按名字找人"
+        assert "set_nickname(" in 源码, "绑定时必须记昵称，否则 PK 无从按名字找人"
 
     def test_写入时记用户标识(self, tmp_path):
         """文件名是哈希，不明文存标识就永远反查不出是谁。"""
-        仓 = 凭据仓库(tmp_path)
-        仓.写入("标识XYZ", {"userId": "u"})
-        全部 = 仓.全部()
+        仓 = CredentialStore(tmp_path)
+        仓.write("标识XYZ", {"userId": "u"})
+        全部 = 仓.iter_all()
         assert [u for u, _ in 全部] == ["标识XYZ"]
 
     def test_老数据跳过而不是崩(self, tmp_path):
         (tmp_path / "deadbeef.json").write_text(json.dumps({"userId": "u"}), encoding="utf-8")
-        assert 凭据仓库(tmp_path).全部() == []
+        assert CredentialStore(tmp_path).iter_all() == []
 
 
 if __name__ == "__main__":
